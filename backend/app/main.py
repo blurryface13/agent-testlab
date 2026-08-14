@@ -21,6 +21,7 @@ DEFAULT_PIPELINE_ROOT = PROJECT_ROOT.parent / "demo"
 PIPELINE_ROOT = Path(os.getenv("T2I_PIPELINE_ROOT", DEFAULT_PIPELINE_ROOT)).expanduser()
 OUTPUT_ROOT = PIPELINE_ROOT / "outputs"
 QUOTA_SNAPSHOT = Path(os.getenv("T2I_QUOTA_SNAPSHOT", PROJECT_ROOT / "data" / "quota_snapshot.json")).expanduser()
+PIPELINE_ENV = PIPELINE_ROOT / ".env"
 
 app = FastAPI(title="T2I Safety Eval", version="0.1.0")
 app.add_middleware(
@@ -42,8 +43,27 @@ T2I_MODELS = [
 ]
 JUDGE_MODELS = [
     {"id": "gemma-4-12b-it", "name": "Gemma 4 12B", "channel": "内部部署"},
+    {"id": "deepseek-chat", "name": "DeepSeek Chat", "channel": "DeepSeek 官方"},
+    {"id": "qwen-plus", "name": "Qwen Plus", "channel": "阿里云百炼官方"},
     {"id": "gpt-5.4", "name": "GPT-5.4", "channel": "APIDock，额度受限"},
     {"id": "sonnet", "name": "Claude Sonnet", "channel": "APIDock，额度受限"},
+]
+PROVIDERS = [
+    {
+        "id": "apidock", "name": "APIDock", "env": "APIDOCK_API_KEY",
+        "base_url": "https://apidock.ai/v1", "models": ["gpt-5.4", "Claude Sonnet"],
+        "quota_mode": "manual_snapshot", "quota_note": "请从 APIDock 控制台同步余额。",
+    },
+    {
+        "id": "deepseek", "name": "DeepSeek 官方", "env": "DEEPSEEK_API_KEY",
+        "base_url": "https://api.deepseek.com", "models": ["deepseek-chat"],
+        "quota_mode": "console_usage", "quota_note": "余额与按 Key 用量由 DeepSeek Billing/Usage 页面提供。",
+    },
+    {
+        "id": "dashscope", "name": "Qwen / 阿里云百炼官方", "env": "DASHSCOPE_API_KEY",
+        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "models": ["qwen-plus"],
+        "quota_mode": "console_usage", "quota_note": "用量由百炼模型监控与阿里云账单侧同步。",
+    },
 ]
 
 
@@ -52,7 +72,7 @@ class PreviewRequest(BaseModel):
 
     dataset_id: str = Field(min_length=1, max_length=500)
     t2i_model: Literal["kolors-local", "zhipu-free", "external-adapter"]
-    judges: list[Literal["gemma-4-12b-it", "gpt-5.4", "sonnet"]] = Field(min_length=1, max_length=2)
+    judges: list[Literal["gemma-4-12b-it", "deepseek-chat", "qwen-plus", "gpt-5.4", "sonnet"]] = Field(min_length=1, max_length=2)
     sample_ratio: Literal[1, 10, 25, 50, 100] = 10
     images_per_prompt: int = Field(default=1, ge=1, le=1)
 
@@ -63,6 +83,42 @@ def read_json(path: Path) -> dict:
         return value if isinstance(value, dict) else {}
     except (OSError, json.JSONDecodeError):
         return {}
+
+
+def local_env_values() -> dict[str, str]:
+    """Read only the sibling pipeline's local environment file, never expose values."""
+    values: dict[str, str] = {}
+    try:
+        for raw_line in PIPELINE_ENV.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            values[key.strip()] = value.strip().strip('"').strip("'")
+    except OSError:
+        pass
+    return values
+
+
+def provider_inventory() -> list[dict]:
+    """Return safe provider metadata. API keys remain in process memory only."""
+    local_values = local_env_values()
+    providers = []
+    for provider in PROVIDERS:
+        configured = bool(os.getenv(provider["env"]) or local_values.get(provider["env"]))
+        providers.append(
+            {
+                "id": provider["id"],
+                "name": provider["name"],
+                "base_url": provider["base_url"],
+                "models": provider["models"],
+                "configured": configured,
+                "status": "已配置" if configured else "缺少密钥",
+                "quota_mode": provider["quota_mode"],
+                "quota_note": provider["quota_note"],
+            }
+        )
+    return providers
 
 
 def iter_jsonl(path: Path):
@@ -197,10 +253,11 @@ def quota_cards() -> list[dict]:
     records = snapshot.get("quotas", []) if isinstance(snapshot, dict) else []
     if isinstance(records, list) and records:
         return [record for record in records if isinstance(record, dict)]
+    configured = {provider["id"]: provider["configured"] for provider in provider_inventory()}
     return [
-        {"name": "APIDock", "vendor": "GPT-5.4 · Sonnet", "remaining": "未配置", "percent": 0, "tone": "low"},
-        {"name": "Gemma local", "vendor": "内部部署", "remaining": "本地通道", "percent": 100, "tone": "good"},
-        {"name": "Zhipu free", "vendor": "单图验证", "remaining": "待配置", "percent": 0, "tone": "watch"},
+        {"name": "APIDock", "vendor": "GPT-5.4 · Sonnet", "remaining": "待同步" if configured["apidock"] else "未配置", "percent": 0, "tone": "watch" if configured["apidock"] else "low", "provider": "apidock"},
+        {"name": "DeepSeek 官方", "vendor": "deepseek-chat", "remaining": "账单侧同步" if configured["deepseek"] else "未配置", "percent": 0, "tone": "watch" if configured["deepseek"] else "low", "provider": "deepseek"},
+        {"name": "Qwen 官方", "vendor": "qwen-plus · 百炼", "remaining": "账单侧同步" if configured["dashscope"] else "未配置", "percent": 0, "tone": "watch" if configured["dashscope"] else "low", "provider": "dashscope"},
     ]
 
 
@@ -248,6 +305,12 @@ def datasets() -> list[dict]:
 @app.get("/api/config/options")
 def config_options() -> dict:
     return {"t2i_models": T2I_MODELS, "judge_models": JUDGE_MODELS, "sample_ratios": [1, 10, 25, 50, 100]}
+
+
+@app.get("/api/providers")
+def providers() -> dict:
+    """Expose configuration state and quota source, never a secret or fake balance."""
+    return {"providers": provider_inventory(), "quotas": quota_cards(), "updated_at": datetime.now().astimezone().strftime("%m-%d %H:%M")}
 
 
 @app.post("/api/runs/preview")
