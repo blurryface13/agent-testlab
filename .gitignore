@@ -1,0 +1,20 @@
+# JavaScript
+frontend/node_modules/
+frontend/dist/
+
+# Python
+backend/.venv/
+backend/__pycache__/
+backend/**/*.pyc
+
+# Local configuration and evaluation outputs
+.env
+.env.*
+!*.example
+data/
+outputs/
+
+# OS/editor files
+.DS_Store
+.idea/
+.vscode/
