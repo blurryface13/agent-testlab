@@ -4,16 +4,42 @@ export type Run = {
   model: string;
   status: "running" | "completed" | "queued";
   progress: number;
-  asr?: number;
+  match_rate?: number;
+  matched?: number;
+  total?: number;
   created_at: string;
+};
+
+export type Dataset = {
+  id: string;
+  name: string;
+  path: string;
+  count: number;
+  categories: Record<string, number>;
+  sources: string[];
+  updated_at: string;
+};
+
+export type ModelOption = { id: string; name: string; channel: string; mode?: string };
+export type ConfigOptions = { t2i_models: ModelOption[]; judge_models: ModelOption[]; sample_ratios: number[] };
+export type PreviewResult = {
+  accepted: boolean;
+  mode?: "preflight_only";
+  message: string;
+  selection?: { dataset_name: string; dataset_count: number; selected_prompts: number; estimated_images: number; judges: string[]; t2i_model: string; sample_ratio: number };
 };
 
 export type Dashboard = {
   asr: number;
   generated: number;
   refusal_rate: number;
+  dataset_count: number;
+  sample_count: number;
+  latest_validation_rate: number;
   queued: number;
   category_asr: Array<{ name: string; value: number; color: string }>;
+  category_coverage: Array<{ name: string; value: number }>;
+  datasets: Dataset[];
   runs: Run[];
   quotas: Array<{ name: string; vendor: string; remaining: string; percent: number; tone: "good" | "watch" | "low" }>;
 };
@@ -22,6 +48,9 @@ const fallback: Dashboard = {
   asr: 0.53,
   generated: 110,
   refusal_rate: 0.18,
+  dataset_count: 4,
+  sample_count: 390,
+  latest_validation_rate: 0.964,
   queued: 2,
   category_asr: [
     { name: "国内政治", value: 42, color: "var(--blue)" },
@@ -30,16 +59,37 @@ const fallback: Dashboard = {
     { name: "知识产权", value: 67, color: "var(--orange)" },
     { name: "隐私", value: 35, color: "var(--rose)" },
   ],
+  category_coverage: [
+    { name: "political_foreign", value: 124 },
+    { name: "discrimination", value: 80 },
+    { name: "violence", value: 62 },
+    { name: "ip", value: 47 },
+  ],
+  datasets: [
+    { id: "dataset_gemma_100/generated.jsonl", name: "dataset_gemma_100", path: "dataset_gemma_100/generated.jsonl", count: 100, categories: { political_foreign: 100 }, sources: ["GEN-gemma-4-12b-it"], updated_at: "08-14 14:20" },
+  ],
   runs: [
-    { id: "run-20260814-03", dataset: "Gemma Stage 1 · 110", model: "Kolors / local", status: "running", progress: 68, created_at: "今天 14:20" },
-    { id: "run-20260814-02", dataset: "国内政治 · 100", model: "Zhipu Image", status: "completed", progress: 100, asr: 0.42, created_at: "今天 10:12" },
-    { id: "run-20260813-01", dataset: "GPT-5.4 · 110", model: "Kolors / local", status: "completed", progress: 100, asr: 0.53, created_at: "昨天 18:46" },
+    { id: "标签校验:gpt-5.4", dataset: "gen_gemma_110_text_eval", model: "gpt-5.4", status: "completed", progress: 100, match_rate: 0.964, matched: 106, total: 110, created_at: "08-14 14:13" },
   ],
   quotas: [
     { name: "APIDock", vendor: "GPT-5.4 · Sonnet", remaining: "$3.19", percent: 16, tone: "low" },
     { name: "Gemma local", vendor: "内部部署", remaining: "可用", percent: 96, tone: "good" },
     { name: "Zhipu free", vendor: "单图验证", remaining: "可用", percent: 72, tone: "watch" },
   ],
+};
+
+const fallbackOptions: ConfigOptions = {
+  t2i_models: [
+    { id: "kolors-local", name: "Kolors / 本地 SD", channel: "本地部署", mode: "实验目标" },
+    { id: "zhipu-free", name: "Zhipu Image", channel: "免费单图验证", mode: "低成本验证" },
+    { id: "external-adapter", name: "外部 Adapter", channel: "需在正式 worker 配置", mode: "仅配置" },
+  ],
+  judge_models: [
+    { id: "gemma-4-12b-it", name: "Gemma 4 12B", channel: "内部部署" },
+    { id: "gpt-5.4", name: "GPT-5.4", channel: "APIDock，额度受限" },
+    { id: "sonnet", name: "Claude Sonnet", channel: "APIDock，额度受限" },
+  ],
+  sample_ratios: [1, 10, 25, 50, 100],
 };
 
 export async function loadDashboard(): Promise<{ data: Dashboard; source: "api" | "demo" }> {
@@ -50,4 +100,24 @@ export async function loadDashboard(): Promise<{ data: Dashboard; source: "api" 
   } catch {
     return { data: fallback, source: "demo" };
   }
+}
+
+export async function loadConfigOptions(): Promise<ConfigOptions> {
+  try {
+    const response = await fetch("/api/config/options");
+    if (!response.ok) throw new Error("options unavailable");
+    return await response.json() as ConfigOptions;
+  } catch {
+    return fallbackOptions;
+  }
+}
+
+export async function previewRun(payload: { dataset_id: string; t2i_model: string; judges: string[]; sample_ratio: number; images_per_prompt: number }): Promise<PreviewResult> {
+  const response = await fetch("/api/runs/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error("预检服务不可用");
+  return await response.json() as PreviewResult;
 }

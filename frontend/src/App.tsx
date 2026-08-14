@@ -1,10 +1,7 @@
-import { useEffect, useState } from "react";
-import { Dashboard, loadDashboard } from "./api";
+import { FormEvent, useEffect, useState } from "react";
+import { ConfigOptions, Dashboard, Dataset, PreviewResult, loadConfigOptions, loadDashboard, previewRun } from "./api";
 
-const navItems = [
-  ["概览", "⌘"], ["数据集", "▦"], ["运行任务", "◔"], ["结果分析", "⌁"],
-];
-
+const navItems = [["概览", "⌘"], ["数据集", "▦"], ["运行任务", "◔"], ["结果分析", "⌁"]];
 const statusLabel = { running: "运行中", completed: "已完成", queued: "队列中" };
 
 function Icon({ children }: { children: string }) {
@@ -13,18 +10,39 @@ function Icon({ children }: { children: string }) {
 
 export function App() {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
+  const [options, setOptions] = useState<ConfigOptions | null>(null);
   const [source, setSource] = useState<"api" | "demo">("demo");
   const [active, setActive] = useState("概览");
+  const [view, setView] = useState<"overview" | "composer">("overview");
 
-  useEffect(() => {
-    loadDashboard().then(({ data, source: nextSource }) => {
-      setDashboard(data);
-      setSource(nextSource);
+  const refresh = () => {
+    Promise.all([loadDashboard(), loadConfigOptions()]).then(([nextDashboard, nextOptions]) => {
+      setDashboard(nextDashboard.data);
+      setSource(nextDashboard.source);
+      setOptions(nextOptions);
     });
-  }, []);
+  };
 
-  if (!dashboard) return <main className="loading">正在读取实验概览…</main>;
-  const maxCategory = Math.max(...dashboard.category_asr.map((item) => item.value));
+  useEffect(refresh, []);
+
+  const openComposer = () => {
+    setActive("运行任务");
+    setView("composer");
+  };
+
+  const selectNav = (label: string) => {
+    setActive(label);
+    if (label === "运行任务") {
+      setView("composer");
+      return;
+    }
+    setView("overview");
+    if (label === "数据集") setTimeout(() => document.getElementById("datasets")?.scrollIntoView({ behavior: "smooth" }), 0);
+  };
+
+  if (!dashboard || !options) return <main className="loading">正在读取实验概览…</main>;
+  const coverage = dashboard.category_coverage.slice(0, 7);
+  const maxCoverage = Math.max(1, ...coverage.map((item) => item.value));
 
   return (
     <div className="shell">
@@ -36,7 +54,7 @@ export function App() {
 
       <aside className="sidebar">
         <p className="nav-caption">评测工作台</p>
-        {navItems.map(([label, icon]) => <button key={label} className={active === label ? "nav-item selected" : "nav-item"} onClick={() => setActive(label)}><Icon>{icon}</Icon>{label}</button>)}
+        {navItems.map(([label, icon]) => <button key={label} className={active === label ? "nav-item selected" : "nav-item"} onClick={() => selectNav(label)}><Icon>{icon}</Icon>{label}</button>)}
         <div className="sidebar-separator" />
         <p className="nav-caption">系统</p>
         <button className="nav-item"><Icon>⊙</Icon>模型与通道</button>
@@ -45,46 +63,137 @@ export function App() {
       </aside>
 
       <main className="content" id="workspace">
-        <section className="page-heading">
-          <div><p className="eyebrow">PIPELINE OVERVIEW</p><h1>实验概览</h1><p className="subtle">所有指标由本地 pipeline 结果计算，不上传数据集或密钥。</p></div>
-          <div className="heading-actions"><button className="secondary"><Icon>↻</Icon>刷新</button><button className="primary"><Icon>＋</Icon>新建运行</button></div>
-        </section>
+        {view === "composer" ? (
+          <RunComposer datasets={dashboard.datasets} options={options} onBack={() => { setView("overview"); setActive("概览"); }} />
+        ) : (
+          <>
+            <section className="page-heading">
+              <div><p className="eyebrow">PIPELINE OVERVIEW</p><h1>实验概览</h1><p className="subtle">索引本地 demo 产物；ASR 仅在真实生图和裁判结果归档后展示。</p></div>
+              <div className="heading-actions"><button className="secondary" onClick={refresh}><Icon>↻</Icon>刷新</button><button className="primary" onClick={openComposer}><Icon>＋</Icon>新建运行</button></div>
+            </section>
 
-        <section className="metric-strip" aria-label="核心指标">
-          <Metric label="总体 ASR" value={`${Math.round(dashboard.asr * 100)}%`} note="风险类 · 已完成运行" tone="blue" />
-          <Metric label="已生成图像" value={dashboard.generated.toString()} note="当前实验批次" tone="teal" />
-          <Metric label="拒答率" value={`${Math.round(dashboard.refusal_rate * 100)}%`} note="生成侧，非 ASR" tone="violet" />
-          <Metric label="等待任务" value={dashboard.queued.toString()} note="等待本地执行" tone="orange" />
-        </section>
+            <section className="metric-strip" aria-label="核心指标">
+              <Metric label="已索引数据集" value={dashboard.dataset_count.toString()} note="demo 生成产物" tone="blue" />
+              <Metric label="已索引样本" value={dashboard.sample_count.toString()} note="可用于本地运行单" tone="teal" />
+              <Metric label="最近标签命中" value={`${Math.round(dashboard.latest_validation_rate * 100)}%`} note="文本标签校验，非 ASR" tone="violet" />
+              <Metric label="等待任务" value={dashboard.queued.toString()} note="预检不进入真实队列" tone="orange" />
+            </section>
 
-        <section className="dashboard-grid">
-          <section className="panel category-panel">
-            <div className="panel-heading"><div><p className="eyebrow">RISK COVERAGE</p><h2>小类攻击成功率</h2></div><button className="text-button">查看全部 <span>→</span></button></div>
-            <p className="panel-description">按生成来源小类分组展示，大类评估器输出决定最终 ASR。</p>
-            <div className="bar-chart">
-              {dashboard.category_asr.map((item) => <div className="bar-row" key={item.name}><span>{item.name}</span><div className="bar-track"><i style={{ width: `${(item.value / maxCategory) * 100}%`, background: item.color }} /></div><b>{item.value}%</b></div>)}
-            </div>
-            <div className="method-note"><span>◎</span><p>VLM 按大类作二元安全判定，小类仅用于生成控制与归因分析。</p></div>
-          </section>
+            <section className="dashboard-grid">
+              <section className="panel category-panel">
+                <div className="panel-heading"><div><p className="eyebrow">RISK COVERAGE</p><h2>小类样本覆盖</h2></div><button className="text-button" onClick={() => document.getElementById("datasets")?.scrollIntoView({ behavior: "smooth" })}>查看数据集 <span>→</span></button></div>
+                <p className="panel-description">读取生成样本的细分标签；大类裁判与 ASR 在后续真实评测中单独归档。</p>
+                <div className="bar-chart">
+                  {coverage.map((item, index) => <div className="bar-row" key={item.name}><span>{item.name}</span><div className="bar-track"><i style={{ width: `${(item.value / maxCoverage) * 100}%`, background: ["#3d7cf1", "#8972df", "#24b7aa", "#efac45", "#e5667e"][index % 5] }} /></div><b>{item.value} 条</b></div>)}
+                </div>
+                <div className="method-note"><span>◎</span><p>标签校验摘要与 T2I ASR 分开记录，避免把数据集质量误作生成侧安全成绩。</p></div>
+              </section>
 
-          <aside className="panel quota-panel">
-            <div className="panel-heading"><div><p className="eyebrow">COST WATCH</p><h2>额度监控</h2></div><span className="updated">刚刚更新</span></div>
-            <p className="panel-description">执行前检查通道可用性，避免误用受限额度。</p>
-            <div className="quota-list">{dashboard.quotas.map((quota) => <div className="quota" key={quota.name}><div className="quota-top"><div><strong>{quota.name}</strong><span>{quota.vendor}</span></div><b>{quota.remaining}</b></div><div className="quota-meter"><i className={quota.tone} style={{ width: `${quota.percent}%` }} /></div></div>)}</div>
-            <button className="quota-link">管理模型通道 <span>→</span></button>
-          </aside>
-        </section>
+              <aside className="panel quota-panel">
+                <div className="panel-heading"><div><p className="eyebrow">COST WATCH</p><h2>额度监控</h2></div><span className="updated">本地快照</span></div>
+                <p className="panel-description">执行前检查通道可用性，避免误用 APIDock 或公司额度。</p>
+                <div className="quota-list">{dashboard.quotas.map((quota) => <div className="quota" key={quota.name}><div className="quota-top"><div><strong>{quota.name}</strong><span>{quota.vendor}</span></div><b>{quota.remaining}</b></div><div className="quota-meter"><i className={quota.tone} style={{ width: `${quota.percent}%` }} /></div></div>)}</div>
+                <button className="quota-link">管理模型通道 <span>→</span></button>
+              </aside>
+            </section>
 
-        <section className="panel runs-panel" id="pipeline">
-          <div className="panel-heading"><div><p className="eyebrow">RECENT ACTIVITY</p><h2>最近运行</h2></div><button className="text-button">任务历史 <span>→</span></button></div>
-          <div className="run-table" role="table">
-            <div className="run-head" role="row"><span>运行</span><span>数据集</span><span>被测模型</span><span>进度 / ASR</span><span>状态</span></div>
-            {dashboard.runs.map((run) => <div className="run-row" role="row" key={run.id}><div><strong>{run.id}</strong><small>{run.created_at}</small></div><span>{run.dataset}</span><span className="model-pill">{run.model}</span><div className="run-progress"><div><i style={{ width: `${run.progress}%` }} /></div><b>{run.asr !== undefined ? `ASR ${Math.round(run.asr * 100)}%` : `${run.progress}%`}</b></div><span className={`status ${run.status}`}><i />{statusLabel[run.status]}</span></div>)}
-          </div>
-        </section>
+            <section className="panel datasets-panel" id="datasets">
+              <div className="panel-heading"><div><p className="eyebrow">LOCAL ARTIFACTS</p><h2>数据集索引</h2></div><span className="updated">只读 · demo/outputs</span></div>
+              <div className="dataset-table" role="table">
+                <div className="dataset-head" role="row"><span>数据集</span><span>样本</span><span>小类覆盖</span><span>生成来源</span><span>更新时间</span></div>
+                {dashboard.datasets.slice(0, 6).map((dataset) => <div className="dataset-row" role="row" key={dataset.id}><strong>{dataset.name}</strong><b>{dataset.count}</b><span>{Object.keys(dataset.categories).slice(0, 3).join(" · ")}</span><span>{dataset.sources.join(" · ")}</span><small>{dataset.updated_at}</small></div>)}
+              </div>
+            </section>
+
+            <section className="panel runs-panel" id="pipeline">
+              <div className="panel-heading"><div><p className="eyebrow">VALIDATION HISTORY</p><h2>标签校验记录</h2></div><button className="text-button">任务历史 <span>→</span></button></div>
+              <div className="run-table" role="table">
+                <div className="run-head" role="row"><span>裁判模型</span><span>来源数据集</span><span>匹配结果</span><span>命中率</span><span>状态</span></div>
+                {dashboard.runs.map((run) => <div className="run-row" role="row" key={run.id}><div><strong>{run.model}</strong><small>{run.created_at}</small></div><span>{run.dataset}</span><span>{run.matched}/{run.total}</span><div className="run-progress"><div><i style={{ width: `${Math.round((run.match_rate || 0) * 100)}%` }} /></div><b>{Math.round((run.match_rate || 0) * 100)}%</b></div><span className={`status ${run.status}`}><i />{statusLabel[run.status]}</span></div>)}
+              </div>
+            </section>
+          </>
+        )}
       </main>
     </div>
   );
+}
+
+function RunComposer({ datasets, options, onBack }: { datasets: Dataset[]; options: ConfigOptions; onBack: () => void }) {
+  const [datasetId, setDatasetId] = useState(datasets[0]?.id || "");
+  const [t2iModel, setT2iModel] = useState("kolors-local");
+  const [judges, setJudges] = useState<string[]>(["gemma-4-12b-it"]);
+  const [sampleRatio, setSampleRatio] = useState(10);
+  const [result, setResult] = useState<PreviewResult | null>(null);
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
+
+  useEffect(() => {
+    if (!datasetId && datasets[0]) setDatasetId(datasets[0].id);
+  }, [datasetId, datasets]);
+
+  const selectedDataset = datasets.find((dataset) => dataset.id === datasetId);
+  const selectedCount = selectedDataset ? Math.max(1, Math.round(selectedDataset.count * sampleRatio / 100)) : 0;
+  const toggleJudge = (id: string) => {
+    setJudges((current) => current.includes(id) ? current.length === 1 ? current : current.filter((judge) => judge !== id) : current.length === 2 ? current : [...current, id]);
+  };
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setPending(true);
+    setError("");
+    setResult(null);
+    try {
+      setResult(await previewRun({ dataset_id: datasetId, t2i_model: t2iModel, judges, sample_ratio: sampleRatio, images_per_prompt: 1 }));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "预检失败，请检查本地服务。");
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return <>
+    <section className="composer-heading">
+      <button className="back-button" onClick={onBack}><Icon>←</Icon>返回实验概览</button>
+      <p className="eyebrow">LOCAL RUN SHEET</p><h1>新建本地运行单</h1>
+      <p className="subtle">先确认数据集与模型组合。提交只生成预检结果，不会调用模型、读取密钥或写入 demo。</p>
+    </section>
+    <form className="composer-grid" onSubmit={submit}>
+      <section className="panel form-panel">
+        <div className="form-section"><p className="eyebrow">01 / DATASET</p><h2>选择已有数据集</h2>
+          <label>数据集
+            <select value={datasetId} onChange={(event) => setDatasetId(event.target.value)} required>
+              {datasets.map((dataset) => <option key={dataset.id} value={dataset.id}>{dataset.name} · {dataset.count} 条</option>)}
+            </select>
+          </label>
+          {selectedDataset && <p className="field-hint">{Object.entries(selectedDataset.categories).map(([name, count]) => `${name} ${count}`).join(" · ")}</p>}
+        </div>
+        <div className="form-section"><p className="eyebrow">02 / TARGET</p><h2>被测文生图模型</h2>
+          <label>模型通道
+            <select value={t2iModel} onChange={(event) => setT2iModel(event.target.value)}>
+              {options.t2i_models.map((model) => <option key={model.id} value={model.id}>{model.name} · {model.channel}</option>)}
+            </select>
+          </label>
+        </div>
+        <div className="form-section"><p className="eyebrow">03 / JUDGES</p><h2>VLM 裁判模型</h2><p className="field-hint">最多两个交叉裁判；当前预检不会调用任一模型。</p>
+          <div className="judge-options">{options.judge_models.map((model) => <label className="check-option" key={model.id}><input type="checkbox" checked={judges.includes(model.id)} onChange={() => toggleJudge(model.id)} /><span><strong>{model.name}</strong><small>{model.channel}</small></span></label>)}</div>
+        </div>
+        <div className="form-section"><p className="eyebrow">04 / SAMPLING</p><h2>采样比例</h2>
+          <div className="ratio-options">{options.sample_ratios.map((ratio) => <label key={ratio}><input type="radio" name="sample-ratio" value={ratio} checked={sampleRatio === ratio} onChange={() => setSampleRatio(ratio)} /><span>{ratio}%</span></label>)}</div>
+          <p className="field-hint">固定每条提示词 1 张图，预计选择 {selectedCount} 条提示词。</p>
+        </div>
+        <div className="form-actions"><button type="button" className="secondary" onClick={onBack}>取消</button><button type="submit" className="primary" disabled={pending || !datasetId}>{pending ? "正在预检…" : "生成本地运行单"}</button></div>
+      </section>
+      <aside className="composer-side">
+        <section className="panel guard-panel"><p className="eyebrow">EXECUTION GUARD</p><h2>本次操作边界</h2>
+          <ul><li>只读取 <code>demo/outputs</code> 的数据集索引。</li><li>不执行生图、裁判、生成或 LLM 自优化。</li><li>不读取 API Key，不使用 APIDock、DMX 或 Zhipu 额度。</li><li>正式运行仍需由 worker 接收这份配置。</li></ul>
+        </section>
+        <section className={`panel preflight-result ${result?.accepted ? "accepted" : ""}`}><p className="eyebrow">PREFLIGHT RESULT</p><h2>{result?.accepted ? "运行单已就绪" : "等待配置确认"}</h2>
+          {result?.accepted && result.selection ? <div className="result-list"><p>{result.message}</p><div><span>数据集</span><b>{result.selection.dataset_name}</b></div><div><span>选择提示词</span><b>{result.selection.selected_prompts} / {result.selection.dataset_count}</b></div><div><span>预计图像</span><b>{result.selection.estimated_images}</b></div><div><span>裁判</span><b>{result.selection.judges.join(" + ")}</b></div></div> : <p className="panel-description">提交后在这里确认所选样本数与安全边界，再把配置交给正式执行 worker。</p>}
+          {error && <p className="inline-error">{error}</p>}
+        </section>
+      </aside>
+    </form>
+  </>;
 }
 
 function Metric({ label, value, note, tone }: { label: string; value: string; note: string; tone: string }) {
