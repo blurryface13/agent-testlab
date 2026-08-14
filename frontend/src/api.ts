@@ -22,6 +22,17 @@ export type Dataset = {
 
 export type ModelOption = { id: string; name: string; channel: string; mode?: string };
 export type ConfigOptions = { t2i_models: ModelOption[]; judge_models: ModelOption[]; sample_ratios: number[] };
+export type Provider = {
+  id: string;
+  name: string;
+  base_url: string;
+  models: string[];
+  configured: boolean;
+  status: string;
+  quota_mode: "manual_snapshot" | "console_usage";
+  quota_note: string;
+};
+export type ProviderResponse = { providers: Provider[]; quotas: Dashboard["quotas"]; updated_at: string };
 export type PreviewResult = {
   accepted: boolean;
   mode?: "preflight_only";
@@ -73,8 +84,8 @@ const fallback: Dashboard = {
   ],
   quotas: [
     { name: "APIDock", vendor: "GPT-5.4 · Sonnet", remaining: "$3.19", percent: 16, tone: "low" },
-    { name: "Gemma local", vendor: "内部部署", remaining: "可用", percent: 96, tone: "good" },
-    { name: "Zhipu free", vendor: "单图验证", remaining: "可用", percent: 72, tone: "watch" },
+    { name: "DeepSeek 官方", vendor: "deepseek-chat", remaining: "账单侧同步", percent: 0, tone: "watch" },
+    { name: "Qwen 官方", vendor: "qwen-plus · 百炼", remaining: "账单侧同步", percent: 0, tone: "watch" },
   ],
 };
 
@@ -86,6 +97,8 @@ const fallbackOptions: ConfigOptions = {
   ],
   judge_models: [
     { id: "gemma-4-12b-it", name: "Gemma 4 12B", channel: "内部部署" },
+    { id: "deepseek-chat", name: "DeepSeek Chat", channel: "DeepSeek 官方" },
+    { id: "qwen-plus", name: "Qwen Plus", channel: "阿里云百炼官方" },
     { id: "gpt-5.4", name: "GPT-5.4", channel: "APIDock，额度受限" },
     { id: "sonnet", name: "Claude Sonnet", channel: "APIDock，额度受限" },
   ],
@@ -110,6 +123,12 @@ export async function loadConfigOptions(): Promise<ConfigOptions> {
   } catch {
     return fallbackOptions;
   }
+}
+
+export async function loadProviders(): Promise<ProviderResponse> {
+  const response = await fetch("/api/providers");
+  if (!response.ok) throw new Error("通道配置服务不可用");
+  return await response.json() as ProviderResponse;
 }
 
 export async function previewRun(payload: { dataset_id: string; t2i_model: string; judges: string[]; sample_ratio: number; images_per_prompt: number }): Promise<PreviewResult> {

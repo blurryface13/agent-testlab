@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
-import { ConfigOptions, Dashboard, Dataset, PreviewResult, loadConfigOptions, loadDashboard, previewRun } from "./api";
+import { ConfigOptions, Dashboard, Dataset, PreviewResult, ProviderResponse, loadConfigOptions, loadDashboard, loadProviders, previewRun } from "./api";
 
 const navItems = [["概览", "⌘"], ["数据集", "▦"], ["运行任务", "◔"], ["结果分析", "⌁"]];
 const statusLabel = { running: "运行中", completed: "已完成", queued: "队列中" };
@@ -11,15 +11,17 @@ function Icon({ children }: { children: string }) {
 export function App() {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [options, setOptions] = useState<ConfigOptions | null>(null);
+  const [providers, setProviders] = useState<ProviderResponse | null>(null);
   const [source, setSource] = useState<"api" | "demo">("demo");
   const [active, setActive] = useState("概览");
-  const [view, setView] = useState<"overview" | "composer">("overview");
+  const [view, setView] = useState<"overview" | "composer" | "providers">("overview");
 
   const refresh = () => {
-    Promise.all([loadDashboard(), loadConfigOptions()]).then(([nextDashboard, nextOptions]) => {
+    Promise.all([loadDashboard(), loadConfigOptions(), loadProviders().catch(() => null)]).then(([nextDashboard, nextOptions, nextProviders]) => {
       setDashboard(nextDashboard.data);
       setSource(nextDashboard.source);
       setOptions(nextOptions);
+      setProviders(nextProviders);
     });
   };
 
@@ -29,6 +31,10 @@ export function App() {
     setActive("运行任务");
     setView("composer");
   };
+  const openProviders = () => {
+    setActive("通道与额度");
+    setView("providers");
+  };
 
   const selectNav = (label: string) => {
     setActive(label);
@@ -36,19 +42,23 @@ export function App() {
       setView("composer");
       return;
     }
+    if (label === "结果分析") {
+      setView("overview");
+      setTimeout(() => document.getElementById("pipeline")?.scrollIntoView({ behavior: "smooth" }), 0);
+      return;
+    }
     setView("overview");
     if (label === "数据集") setTimeout(() => document.getElementById("datasets")?.scrollIntoView({ behavior: "smooth" }), 0);
   };
 
   if (!dashboard || !options) return <main className="loading">正在读取实验概览…</main>;
-  const coverage = dashboard.category_coverage.slice(0, 7);
+  const coverage = dashboard.category_coverage.slice(0, 5);
   const maxCoverage = Math.max(1, ...coverage.map((item) => item.value));
 
   return (
     <div className="shell">
       <header className="topbar">
         <div className="brand"><span className="brand-mark">↗</span><span>T2I Safety Eval</span><em>LAB</em></div>
-        <nav aria-label="主导航"><a className="current" href="#workspace">工作台</a><a href="#pipeline">Pipeline</a><a href="#docs">文档</a></nav>
         <div className="top-actions"><span className={`source-badge ${source}`}><i />{source === "api" ? "已连接本地服务" : "演示数据"}</span><button className="avatar" aria-label="当前用户">D</button></div>
       </header>
 
@@ -57,18 +67,19 @@ export function App() {
         {navItems.map(([label, icon]) => <button key={label} className={active === label ? "nav-item selected" : "nav-item"} onClick={() => selectNav(label)}><Icon>{icon}</Icon>{label}</button>)}
         <div className="sidebar-separator" />
         <p className="nav-caption">系统</p>
-        <button className="nav-item"><Icon>⊙</Icon>模型与通道</button>
-        <button className="nav-item"><Icon>⚙</Icon>本地配置</button>
+        <button className={active === "通道与额度" ? "nav-item selected" : "nav-item"} onClick={openProviders}><Icon>⊙</Icon>通道与额度</button>
         <div className="sidebar-bottom"><span className="pulse" />Pipeline ready<br /><small>v0.1 · local workspace</small></div>
       </aside>
 
       <main className="content" id="workspace">
         {view === "composer" ? (
           <RunComposer datasets={dashboard.datasets} options={options} onBack={() => { setView("overview"); setActive("概览"); }} />
+        ) : view === "providers" ? (
+          <ProviderConsole providers={providers} onBack={() => { setView("overview"); setActive("概览"); }} onRefresh={refresh} />
         ) : (
           <>
             <section className="page-heading">
-              <div><p className="eyebrow">PIPELINE OVERVIEW</p><h1>实验概览</h1><p className="subtle">索引本地 demo 产物；ASR 仅在真实生图和裁判结果归档后展示。</p></div>
+              <div><p className="eyebrow">PIPELINE OVERVIEW</p><h1>实验概览</h1><p className="subtle">本地产物索引</p></div>
               <div className="heading-actions"><button className="secondary" onClick={refresh}><Icon>↻</Icon>刷新</button><button className="primary" onClick={openComposer}><Icon>＋</Icon>新建运行</button></div>
             </section>
 
@@ -76,24 +87,20 @@ export function App() {
               <Metric label="已索引数据集" value={dashboard.dataset_count.toString()} note="demo 生成产物" tone="blue" />
               <Metric label="已索引样本" value={dashboard.sample_count.toString()} note="可用于本地运行单" tone="teal" />
               <Metric label="最近标签命中" value={`${Math.round(dashboard.latest_validation_rate * 100)}%`} note="文本标签校验，非 ASR" tone="violet" />
-              <Metric label="等待任务" value={dashboard.queued.toString()} note="预检不进入真实队列" tone="orange" />
             </section>
 
             <section className="dashboard-grid">
               <section className="panel category-panel">
-                <div className="panel-heading"><div><p className="eyebrow">RISK COVERAGE</p><h2>小类样本覆盖</h2></div><button className="text-button" onClick={() => document.getElementById("datasets")?.scrollIntoView({ behavior: "smooth" })}>查看数据集 <span>→</span></button></div>
-                <p className="panel-description">读取生成样本的细分标签；大类裁判与 ASR 在后续真实评测中单独归档。</p>
+                <div className="panel-heading"><h2>小类样本覆盖</h2><button className="text-button" onClick={() => document.getElementById("datasets")?.scrollIntoView({ behavior: "smooth" })}>查看数据集 <span>→</span></button></div>
                 <div className="bar-chart">
                   {coverage.map((item, index) => <div className="bar-row" key={item.name}><span>{item.name}</span><div className="bar-track"><i style={{ width: `${(item.value / maxCoverage) * 100}%`, background: ["#3d7cf1", "#8972df", "#24b7aa", "#efac45", "#e5667e"][index % 5] }} /></div><b>{item.value} 条</b></div>)}
                 </div>
-                <div className="method-note"><span>◎</span><p>标签校验摘要与 T2I ASR 分开记录，避免把数据集质量误作生成侧安全成绩。</p></div>
               </section>
 
               <aside className="panel quota-panel">
-                <div className="panel-heading"><div><p className="eyebrow">COST WATCH</p><h2>额度监控</h2></div><span className="updated">本地快照</span></div>
-                <p className="panel-description">执行前检查通道可用性，避免误用 APIDock 或公司额度。</p>
+                <div className="panel-heading"><h2>额度监控</h2><span className="updated">账单侧同步</span></div>
                 <div className="quota-list">{dashboard.quotas.map((quota) => <div className="quota" key={quota.name}><div className="quota-top"><div><strong>{quota.name}</strong><span>{quota.vendor}</span></div><b>{quota.remaining}</b></div><div className="quota-meter"><i className={quota.tone} style={{ width: `${quota.percent}%` }} /></div></div>)}</div>
-                <button className="quota-link">管理模型通道 <span>→</span></button>
+                <button className="quota-link" onClick={openProviders}>管理模型通道 <span>→</span></button>
               </aside>
             </section>
 
@@ -193,6 +200,26 @@ function RunComposer({ datasets, options, onBack }: { datasets: Dataset[]; optio
         </section>
       </aside>
     </form>
+  </>;
+}
+
+function ProviderConsole({ providers, onBack, onRefresh }: { providers: ProviderResponse | null; onBack: () => void; onRefresh: () => void }) {
+  return <>
+    <section className="composer-heading provider-heading">
+      <button className="back-button" onClick={onBack}><Icon>←</Icon>返回实验概览</button>
+      <p className="eyebrow">CHANNELS & BUDGET</p><h1>通道与额度</h1>
+    </section>
+    <section className="panel provider-panel">
+      <div className="provider-toolbar"><span>密钥只保留在本机环境文件中，界面不读取或显示密钥。</span><button className="secondary" onClick={onRefresh}><Icon>↻</Icon>刷新状态</button></div>
+      {providers ? <div className="provider-list">
+        {providers.providers.map((provider) => <article className="provider-row" key={provider.id}>
+          <div><strong>{provider.name}</strong><small>{provider.models.join(" · ")}</small></div>
+          <code>{provider.base_url}</code>
+          <span className={provider.configured ? "provider-status ready" : "provider-status missing"}><i />{provider.status}</span>
+          <p>{provider.quota_note}</p>
+        </article>)}
+      </div> : <p className="panel-description">通道状态暂不可用，请确认本地后端已启动。</p>}
+    </section>
   </>;
 }
 
