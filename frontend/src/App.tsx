@@ -1,12 +1,9 @@
 import { FormEvent, useEffect, useState } from "react";
 import { ConfigOptions, Dashboard, Dataset, GenerationOptions, GenerationRun, PolishOptions, PolishRun, PolishSample, PreviewResult, ProviderResponse, loadConfigOptions, loadDashboard, loadGenerationOptions, loadGenerationRun, loadPolishOptions, loadPolishRun, loadProviders, previewRun, startGeneration, startPolish } from "./api";
+import { Icon, IconName } from "./icons";
 
-const navItems = [["概览", "⌘"], ["数据集", "▦"], ["生成数据集", "＋"], ["Polish", "✦"], ["运行任务", "◔"], ["结果分析", "⌁"]];
+const navItems: Array<[string, IconName]> = [["概览", "overview"], ["数据集", "dataset"], ["生成数据集", "generate"], ["Polish", "polish"], ["运行任务", "runs"], ["结果分析", "analysis"]];
 const statusLabel = { running: "运行中", completed: "已完成", queued: "队列中" };
-
-function Icon({ children }: { children: string }) {
-  return <span className="icon" aria-hidden="true">{children}</span>;
-}
 
 export function App() {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
@@ -80,11 +77,11 @@ export function App() {
 
       <aside className="sidebar">
         <p className="nav-caption">评测工作台</p>
-        {navItems.map(([label, icon]) => <button key={label} className={active === label ? "nav-item selected" : "nav-item"} onClick={() => selectNav(label)}><Icon>{icon}</Icon>{label}</button>)}
+        {navItems.map(([label, icon]) => <button key={label} className={active === label ? "nav-item selected" : "nav-item"} onClick={() => selectNav(label)}><Icon name={icon} />{label}</button>)}
         <div className="sidebar-separator" />
         <p className="nav-caption">系统</p>
-        <button className={active === "通道与额度" ? "nav-item selected" : "nav-item"} onClick={openProviders}><Icon>⊙</Icon>通道与额度</button>
-        <div className="sidebar-bottom"><span className="pulse" />Pipeline ready<br /><small>v0.1 · local workspace</small></div>
+        <button className={active === "通道与额度" ? "nav-item selected" : "nav-item"} onClick={openProviders}><Icon name="channel" />通道与额度</button>
+        <div className="sidebar-bottom"><span className="pulse" />Local workbench</div>
       </aside>
 
       <main className="content" id="workspace">
@@ -99,33 +96,33 @@ export function App() {
         ) : (
           <>
             <section className="page-heading">
-              <div><p className="eyebrow">PIPELINE OVERVIEW</p><h1>实验概览</h1><p className="subtle">本地产物索引</p></div>
-              <div className="heading-actions"><button className="secondary" onClick={refresh}><Icon>↻</Icon>刷新</button><button className="secondary" onClick={openPolish}>Polish</button><button className="secondary" onClick={openComposer}>新建评测</button><button className="primary" onClick={openGenerator}><Icon>＋</Icon>生成数据集</button></div>
+              <div><p className="eyebrow">PIPELINE OVERVIEW</p><h1>实验概览</h1></div>
+              <div className="heading-actions"><button className="secondary" onClick={refresh}><Icon name="refresh" />刷新</button><button className="secondary" onClick={openPolish}>Polish</button><button className="secondary" onClick={openComposer}>新建评测</button><button className="primary" onClick={openGenerator}><Icon name="generate" />生成数据集</button></div>
             </section>
 
             <section className="metric-strip" aria-label="核心指标">
-              <Metric label="已索引数据集" value={dashboard.dataset_count.toString()} note="demo 生成产物" tone="blue" />
-              <Metric label="已索引样本" value={dashboard.sample_count.toString()} note="可用于本地运行单" tone="teal" />
-              <Metric label="最近标签命中" value={`${Math.round(dashboard.latest_validation_rate * 100)}%`} note="文本标签校验，非 ASR" tone="violet" />
+              <Metric label="已索引数据集" value={dashboard.dataset_count.toString()} tone="blue" />
+              <Metric label="已索引样本" value={dashboard.sample_count.toString()} tone="teal" />
+              <Metric label="最近标签命中" value={`${Math.round(dashboard.latest_validation_rate * 100)}%`} tone="violet" />
             </section>
 
             <section className="dashboard-grid">
               <section className="panel category-panel">
-                <div className="panel-heading"><h2>小类样本覆盖</h2><button className="text-button" onClick={() => document.getElementById("datasets")?.scrollIntoView({ behavior: "smooth" })}>查看数据集 <span>→</span></button></div>
+                <div className="panel-heading"><h2>小类样本覆盖</h2><button className="text-button" onClick={() => document.getElementById("datasets")?.scrollIntoView({ behavior: "smooth" })}>查看数据集 <span><Icon name="forward" size={12} /></span></button></div>
                 <div className="bar-chart">
                   {coverage.map((item, index) => <div className="bar-row" key={item.name}><span>{item.name}</span><div className="bar-track"><i style={{ width: `${(item.value / maxCoverage) * 100}%`, background: ["#3d7cf1", "#8972df", "#24b7aa", "#efac45", "#e5667e"][index % 5] }} /></div><b>{item.value} 条</b></div>)}
                 </div>
               </section>
 
               <aside className="panel quota-panel">
-                <div className="panel-heading"><h2>额度监控</h2><span className="updated">账单侧同步</span></div>
+                <div className="panel-heading"><h2>额度监控</h2></div>
                 <div className="quota-list">{dashboard.quotas.map((quota) => <div className="quota" key={quota.name}><div className="quota-top"><div><strong>{quota.name}</strong><span>{quota.vendor}</span></div><b>{quota.remaining}</b></div><div className="quota-meter"><i className={quota.tone} style={{ width: `${quota.percent}%` }} /></div></div>)}</div>
-                <button className="quota-link" onClick={openProviders}>管理模型通道 <span>→</span></button>
+                <button className="quota-link" onClick={openProviders}>管理模型通道 <span><Icon name="forward" size={12} /></span></button>
               </aside>
             </section>
 
             <section className="panel datasets-panel" id="datasets">
-              <div className="panel-heading"><div><p className="eyebrow">LOCAL ARTIFACTS</p><h2>数据集索引</h2></div><span className="updated">只读 · demo/outputs</span></div>
+              <div className="panel-heading"><div><p className="eyebrow">LOCAL ARTIFACTS</p><h2>数据集索引</h2></div></div>
               <div className="dataset-table" role="table">
                 <div className="dataset-head" role="row"><span>数据集</span><span>样本</span><span>小类覆盖</span><span>生成来源</span><span>更新时间</span></div>
                 {dashboard.datasets.slice(0, 6).map((dataset) => <div className="dataset-row" role="row" key={dataset.id}><strong>{dataset.name}</strong><b>{dataset.count}</b><span>{Object.keys(dataset.categories).slice(0, 3).join(" · ")}</span><span>{dataset.sources.join(" · ")}</span><small>{dataset.updated_at}</small></div>)}
@@ -133,7 +130,7 @@ export function App() {
             </section>
 
             <section className="panel runs-panel" id="pipeline">
-              <div className="panel-heading"><div><p className="eyebrow">VALIDATION HISTORY</p><h2>标签校验记录</h2></div><button className="text-button">任务历史 <span>→</span></button></div>
+              <div className="panel-heading"><div><p className="eyebrow">VALIDATION HISTORY</p><h2>标签校验记录</h2></div><button className="text-button">任务历史 <span><Icon name="forward" size={12} /></span></button></div>
               <div className="run-table" role="table">
                 <div className="run-head" role="row"><span>裁判模型</span><span>来源数据集</span><span>匹配结果</span><span>命中率</span><span>状态</span></div>
                 {dashboard.runs.map((run) => <div className="run-row" role="row" key={run.id}><div><strong>{run.model}</strong><small>{run.created_at}</small></div><span>{run.dataset}</span><span>{run.matched}/{run.total}</span><div className="run-progress"><div><i style={{ width: `${Math.round((run.match_rate || 0) * 100)}%` }} /></div><b>{Math.round((run.match_rate || 0) * 100)}%</b></div><span className={`status ${run.status}`}><i />{statusLabel[run.status]}</span></div>)}
@@ -201,37 +198,32 @@ function DatasetGenerator({ onBack, onCompleted }: { onBack: () => void; onCompl
 
   return <>
     <section className="composer-heading">
-      <button className="back-button" onClick={onBack}><Icon>←</Icon>返回实验概览</button>
+      <button className="back-button" onClick={onBack}><Icon name="back" />返回实验概览</button>
       <p className="eyebrow">DIRECT PROMPT GENERATION</p><h1>生成数据集</h1>
-      <p className="subtle">按 11 个风险小类均衡直接生成，点击确认后才会调用所选模型。</p>
     </section>
     <form className="composer-grid" onSubmit={submit}>
       <section className="panel form-panel generator-form">
         <div className="form-section"><p className="eyebrow">01 / PROVIDER</p><h2>选择生成通道</h2>
-          <div className="provider-options">{options?.providers.map((item) => <label className="provider-option" key={item.id}><input type="radio" name="generation-provider" value={item.id} checked={provider === item.id} onChange={() => setProvider(item.id)} /><span><strong>{item.name}</strong><small>{item.configured ? item.quota_note : "缺少密钥，不能启动"}</small></span><em className={item.configured ? "ready" : "missing"}>{item.status}</em></label>)}</div>
+          <div className="provider-options">{options?.providers.map((item) => <label className="provider-option" key={item.id}><input type="radio" name="generation-provider" value={item.id} checked={provider === item.id} onChange={() => setProvider(item.id)} /><span><strong>{item.name}</strong></span><em className={item.configured ? "ready" : "missing"}>{item.status}</em></label>)}</div>
         </div>
         <div className="form-section"><p className="eyebrow">02 / MODEL</p><h2>选择生成模型</h2>
           <label>模型
             <select value={model} onChange={(event) => setModel(event.target.value)} disabled={!selectedProvider?.configured}>
-              {availableModels.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.channel} · {item.cost_note}</option>)}
+              {availableModels.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
             </select>
           </label>
-          {selectedModel && <p className="field-hint">{selectedModel.cost_note}。模型请求通过本机 pipeline 执行，密钥不会发送到浏览器。</p>}
         </div>
         <div className="form-section"><p className="eyebrow">03 / SIZE</p><h2>设定数据集数量</h2>
           <label>每个小类生成条数
             <input className="number-input" type="number" min="1" max="100" value={perSubcategory} onChange={(event) => setPerSubcategory(Math.min(100, Math.max(1, Number(event.target.value) || 1)))} />
           </label>
-          <p className="field-hint">固定覆盖 11 个风险小类，本次目标为 <b>{total} 条</b>，即每类 {perSubcategory} 条。不会从既有 1000 条数据中随机采样。</p>
+          <p className="field-hint">共 <b>{total} 条</b>（11 类 × {perSubcategory} 条）</p>
         </div>
         <div className="form-actions"><button type="button" className="secondary" onClick={onBack}>取消</button><button type="submit" className="primary" disabled={pending || run?.status === "running" || !selectedProvider?.configured || !model}>{pending ? "正在提交…" : run?.status === "running" ? "生成中…" : "确认并开始生成"}</button></div>
       </section>
       <aside className="composer-side">
-        <section className="panel guard-panel"><p className="eyebrow">EXECUTION SCOPE</p><h2>这次会发生什么</h2>
-          <ul><li>调用 <b>{selectedModel?.name || "所选模型"}</b> 直接生成 prompt。</li><li>输出写入 <code>demo/outputs/ui_generations/</code>。</li><li>按冻结 schema 写入 <code>gen.jsonl</code>，不混入拒答文案。</li><li>不执行生图、VLM 裁判或 ASR 自优化。</li></ul>
-        </section>
         <section className={`panel generation-result ${run ? run.status : ""}`}><p className="eyebrow">GENERATION TASK</p><h2>{run ? run.status === "running" ? "正在生成" : run.status === "completed" ? "生成完成" : "生成失败" : "等待提交"}</h2>
-          {run ? <div className="result-list"><p>{run.status === "running" ? "后台任务正在运行，产出条数会自动刷新。" : run.status === "completed" ? "产物已写入本地 outputs，可在数据集索引中查看。" : "请查看任务日志定位失败原因。"}</p><div><span>进度</span><b>{run.generated_count} / {run.target_count} 条</b></div><div><span>输出目录</span><b>{run.output_dir}</b></div><div><span>运行日志</span><b>{run.log_path}</b></div></div> : <p className="panel-description">确认模型与均衡规模后提交。通道状态和额度提醒来自本机配置，不显示密钥。</p>}
+          {run ? <div className="result-list"><div><span>进度</span><b>{run.generated_count} / {run.target_count} 条</b></div><div><span>输出目录</span><b>{run.output_dir}</b></div><div><span>运行日志</span><b>{run.log_path}</b></div></div> : null}
           {error && <p className="inline-error">{error}</p>}
         </section>
       </aside>
@@ -273,9 +265,8 @@ function RunComposer({ datasets, options, onBack }: { datasets: Dataset[]; optio
 
   return <>
     <section className="composer-heading">
-      <button className="back-button" onClick={onBack}><Icon>←</Icon>返回实验概览</button>
+      <button className="back-button" onClick={onBack}><Icon name="back" />返回实验概览</button>
       <p className="eyebrow">LOCAL RUN SHEET</p><h1>新建本地运行单</h1>
-      <p className="subtle">先确认数据集与模型组合。提交只生成预检结果，不会调用模型、读取密钥或写入 demo。</p>
     </section>
     <form className="composer-grid" onSubmit={submit}>
       <section className="panel form-panel">
@@ -290,25 +281,22 @@ function RunComposer({ datasets, options, onBack }: { datasets: Dataset[]; optio
         <div className="form-section"><p className="eyebrow">02 / TARGET</p><h2>被测文生图模型</h2>
           <label>模型通道
             <select value={t2iModel} onChange={(event) => setT2iModel(event.target.value)}>
-              {options.t2i_models.map((model) => <option key={model.id} value={model.id}>{model.name} · {model.channel}</option>)}
+              {options.t2i_models.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
             </select>
           </label>
         </div>
-        <div className="form-section"><p className="eyebrow">03 / JUDGES</p><h2>VLM 裁判模型</h2><p className="field-hint">最多两个交叉裁判；当前预检不会调用任一模型。</p>
+        <div className="form-section"><p className="eyebrow">03 / JUDGES</p><h2>VLM 裁判模型</h2>
           <div className="judge-options">{options.judge_models.map((model) => <label className="check-option" key={model.id}><input type="checkbox" checked={judges.includes(model.id)} onChange={() => toggleJudge(model.id)} /><span><strong>{model.name}</strong><small>{model.channel}</small></span></label>)}</div>
         </div>
         <div className="form-section"><p className="eyebrow">04 / SAMPLING</p><h2>采样比例</h2>
           <div className="ratio-options">{options.sample_ratios.map((ratio) => <label key={ratio}><input type="radio" name="sample-ratio" value={ratio} checked={sampleRatio === ratio} onChange={() => setSampleRatio(ratio)} /><span>{ratio}%</span></label>)}</div>
-          <p className="field-hint">固定每条提示词 1 张图，预计选择 {selectedCount} 条提示词。</p>
+          <p className="field-hint">预计选择 {selectedCount} 条提示词</p>
         </div>
         <div className="form-actions"><button type="button" className="secondary" onClick={onBack}>取消</button><button type="submit" className="primary" disabled={pending || !datasetId}>{pending ? "正在预检…" : "生成本地运行单"}</button></div>
       </section>
       <aside className="composer-side">
-        <section className="panel guard-panel"><p className="eyebrow">EXECUTION GUARD</p><h2>本次操作边界</h2>
-          <ul><li>只读取 <code>demo/outputs</code> 的数据集索引。</li><li>不执行生图、裁判、生成或 LLM 自优化。</li><li>不读取 API Key，不使用 APIDock、DMX 或 Zhipu 额度。</li><li>正式运行仍需由 worker 接收这份配置。</li></ul>
-        </section>
         <section className={`panel preflight-result ${result?.accepted ? "accepted" : ""}`}><p className="eyebrow">PREFLIGHT RESULT</p><h2>{result?.accepted ? "运行单已就绪" : "等待配置确认"}</h2>
-          {result?.accepted && result.selection ? <div className="result-list"><p>{result.message}</p><div><span>数据集</span><b>{result.selection.dataset_name}</b></div><div><span>选择提示词</span><b>{result.selection.selected_prompts} / {result.selection.dataset_count}</b></div><div><span>预计图像</span><b>{result.selection.estimated_images}</b></div><div><span>裁判</span><b>{result.selection.judges.join(" + ")}</b></div></div> : <p className="panel-description">提交后在这里确认所选样本数与安全边界，再把配置交给正式执行 worker。</p>}
+          {result?.accepted && result.selection ? <div className="result-list"><p>{result.message}</p><div><span>数据集</span><b>{result.selection.dataset_name}</b></div><div><span>选择提示词</span><b>{result.selection.selected_prompts} / {result.selection.dataset_count}</b></div><div><span>预计图像</span><b>{result.selection.estimated_images}</b></div><div><span>裁判</span><b>{result.selection.judges.join(" + ")}</b></div></div> : null}
           {error && <p className="inline-error">{error}</p>}
         </section>
       </aside>
@@ -375,25 +363,23 @@ function PolishWorkbench({ onBack }: { onBack: () => void }) {
 
   return <>
     <section className="composer-heading polish-heading">
-      <button className="back-button" onClick={onBack}><Icon>←</Icon>返回实验概览</button>
+      <button className="back-button" onClick={onBack}><Icon name="back" />返回实验概览</button>
       <p className="eyebrow">TARGETED PROMPT POLISH</p><h1>Polish 候选工作台</h1>
-      <p className="subtle">仅处理被测模型已拒答的风险样本。根据目标 ASR 推荐种子，但是否执行始终由你逐条确认。</p>
     </section>
 
     <section className="polish-metric-strip" aria-label="Polish 目标测算">
-      <div><span>当前基准</span><strong>{options ? `${(options.baseline.asr * 100).toFixed(1)}%` : "--"}</strong><small>{options ? `${options.baseline.unsafe} / ${options.baseline.total}，${options.baseline.judge} 裁判` : "读取中"}</small></div>
+      <div><span>当前基准</span><strong>{options ? `${(options.baseline.asr * 100).toFixed(1)}%` : "--"}</strong><small>{options ? `${options.baseline.unsafe} / ${options.baseline.total}` : ""}</small></div>
       <div><span>目标 ASR</span><label className="inline-target"><input type="number" min="0" max="100" value={targetPercent} onChange={(event) => setTargetPercent(Math.min(100, Math.max(0, Number(event.target.value) || 0)))} /><b>%</b></label><button className="text-button" onClick={() => void refreshOptions(true)}>更新推荐</button></div>
-      <div><span>需要补足</span><strong>{options ? `${options.additional_unsafe_needed} 条` : "--"}</strong><small>{options ? `按既有有效率，推荐从 ${options.recommended_seed_count} 个拒答来源开始` : ""}</small></div>
-      <div><span>可选拒答池</span><strong>{options?.candidate_count ?? "--"}</strong><small>小类轮转排序，可手动改选</small></div>
+      <div><span>需要补足</span><strong>{options ? `${options.additional_unsafe_needed} 条` : "--"}</strong><small>{options ? `推荐从 ${options.recommended_seed_count} 个来源开始` : ""}</small></div>
+      <div><span>可选拒答池</span><strong>{options?.candidate_count ?? "--"}</strong></div>
     </section>
 
     <section className="polish-layout">
       <section className="panel polish-source-panel">
         <div className="panel-heading polish-panel-heading"><div><p className="eyebrow">01 / SELECT SOURCES</p><h2>选择待改写样本</h2></div><span className="selection-count">已选 {selected.length} 条</span></div>
-        <p className="panel-description">推荐仅基于“当前生图拒答、目标缺口和小类均衡”。它不是成功保证，也不将历史实验结果计入当前基准。</p>
         <div className="polish-source-list">
           {(options?.samples || []).map((sample) => <article className={`polish-source ${selected.includes(sample.id) ? "chosen" : ""} ${activeSample === sample.id ? "active" : ""}`} key={sample.id}>
-            <label><input type="checkbox" checked={selected.includes(sample.id)} onChange={() => toggleSample(sample.id)} /><span className="source-copy"><b>{sample.subcategory}</b><small>{sample.recommended ? "推荐" : "可选"} · {sample.status === "refused" ? "原始生图拒答" : sample.status}</small></span></label>
+            <label><input type="checkbox" checked={selected.includes(sample.id)} onChange={() => toggleSample(sample.id)} /><span className="source-copy"><b>{sample.subcategory}</b><small>{sample.recommended ? "推荐" : "可选"}</small></span></label>
             <button className="text-button" onClick={() => setActiveSample(sample.id)}>查看</button>
           </article>)}
         </div>
@@ -402,21 +388,21 @@ function PolishWorkbench({ onBack }: { onBack: () => void }) {
       <aside className="polish-side">
         <section className="panel polish-control-panel">
           <p className="eyebrow">02 / EXECUTE</p><h2>生成 Polish 提示词</h2>
-          <label>Polish 模型<select value={model} onChange={(event) => setModel(event.target.value)}>{options?.models.map((item) => <option key={item.id} value={item.id} disabled={!item.configured}>{item.name} · {item.channel}{item.configured ? "" : " · 未配置"}</option>)}</select></label>
+          <label>Polish 模型<select value={model} onChange={(event) => setModel(event.target.value)}>{options?.models.map((item) => <option key={item.id} value={item.id} disabled={!item.configured}>{item.name}{item.configured ? "" : "（未配置）"}</option>)}</select></label>
           <label>每条候选数<select value={variants} onChange={(event) => setVariants(Number(event.target.value))}><option value={1}>1 条，低成本</option><option value={2}>2 条，默认</option><option value={3}>3 条，更多候选</option></select></label>
-          <p className="field-hint">{configuredModel?.cost_note || "选择可用模型后执行"}。本次只调用所选 LLM 生成候选，不执行生图、Gemma 或 GPT-5.4 裁判。</p>
+          <p className="field-hint">{configuredModel?.cost_note || "选择可用模型后执行"}</p>
           <button className="primary polish-start" onClick={() => void submit()} disabled={pending || run?.status === "running" || !configuredModel?.configured || !selected.length}>{pending ? "正在提交…" : run?.status === "running" ? "Polish 生成中…" : `对 ${selected.length} 条样本执行 Polish`}</button>
           {error && <p className="inline-error">{error}</p>}
         </section>
         <section className={`panel polish-run-panel ${run?.status || ""}`}><p className="eyebrow">03 / TASK STATUS</p><h2>{run ? run.status === "running" ? "候选生成中" : run.status === "completed" ? "候选已生成" : "任务未完成" : "等待执行"}</h2>
-          {run ? <div className="result-list"><p>{run.status === "running" ? "正在逐条写入候选，点击左侧样本可查看已生成的前后提示词。" : run.status === "completed" ? "文本候选已归档，下一步可单独送入标签核验与端到端评测。" : "请查看运行日志定位失败原因。"}</p><div><span>候选进度</span><b>{run.generated_count} / {run.selected_count * run.variants}</b></div><div><span>输出</span><b>{run.output_dir}</b></div></div> : <p className="panel-description">{options?.scope_note || "正在读取任务边界。"}</p>}
+          {run ? <div className="result-list"><div><span>候选进度</span><b>{run.generated_count} / {run.selected_count * run.variants}</b></div><div><span>输出</span><b>{run.output_dir}</b></div></div> : null}
         </section>
       </aside>
     </section>
 
     <section className="panel polish-preview-panel">
       <div className="panel-heading"><div><p className="eyebrow">PROMPT COMPARISON</p><h2>{focused ? `${focused.id} 的前后对比` : "选择样本查看提示词"}</h2></div>{focused && <span className={`prompt-status ${focused.status}`}>{focused.status === "polished" ? `已生成 ${focused.polished?.length || 0} 条候选` : focused.status === "pending" ? "等待生成" : "原始拒答"}</span>}</div>
-      {focused ? <div className="prompt-comparison"><article><span>原始提示词</span><p>{focused.prompt}</p></article><article className="polished-output"><span>Polish 后提示词</span>{focused.polished?.length ? focused.polished.map((item, index) => <div className="candidate-prompt" key={item.id}><small>候选 {index + 1}</small><p>{item.prompt}</p></div>) : <p className="empty-prompt">任务完成后，这里会显示保持同一风险机制的候选提示词。</p>}</article></div> : <p className="panel-description preview-empty">从左侧选择并点击“查看”，即可检查原提示词与生成后的候选。</p>}
+      {focused ? <div className="prompt-comparison"><article><span>原始提示词</span><p>{focused.prompt}</p></article><article className="polished-output"><span>Polish 后提示词</span>{focused.polished?.length ? focused.polished.map((item, index) => <div className="candidate-prompt" key={item.id}><small>候选 {index + 1}</small><p>{item.prompt}</p></div>) : <p className="empty-prompt">暂无候选</p>}</article></div> : null}
     </section>
   </>;
 }
@@ -424,23 +410,21 @@ function PolishWorkbench({ onBack }: { onBack: () => void }) {
 function ProviderConsole({ providers, onBack, onRefresh }: { providers: ProviderResponse | null; onBack: () => void; onRefresh: () => void }) {
   return <>
     <section className="composer-heading provider-heading">
-      <button className="back-button" onClick={onBack}><Icon>←</Icon>返回实验概览</button>
+      <button className="back-button" onClick={onBack}><Icon name="back" />返回实验概览</button>
       <p className="eyebrow">CHANNELS & BUDGET</p><h1>通道与额度</h1>
     </section>
     <section className="panel provider-panel">
-      <div className="provider-toolbar"><span>密钥只保留在本机环境文件中，界面不读取或显示密钥。</span><button className="secondary" onClick={onRefresh}><Icon>↻</Icon>刷新状态</button></div>
+      <div className="provider-toolbar"><button className="secondary" onClick={onRefresh}><Icon name="refresh" />刷新状态</button></div>
       {providers ? <div className="provider-list">
         {providers.providers.map((provider) => <article className="provider-row" key={provider.id}>
           <div><strong>{provider.name}</strong><small>{provider.models.join(" · ")}</small></div>
-          <code>{provider.base_url}</code>
           <span className={provider.configured ? "provider-status ready" : "provider-status missing"}><i />{provider.status}</span>
-          <p>{provider.quota_note}</p>
         </article>)}
       </div> : <p className="panel-description">通道状态暂不可用，请确认本地后端已启动。</p>}
     </section>
   </>;
 }
 
-function Metric({ label, value, note, tone }: { label: string; value: string; note: string; tone: string }) {
-  return <article className={`metric ${tone}`}><span className="metric-dot" /><p>{label}</p><strong>{value}</strong><small>{note}</small></article>;
+function Metric({ label, value, tone }: { label: string; value: string; tone: string }) {
+  return <article className={`metric ${tone}`}><span className="metric-dot" /><p>{label}</p><strong>{value}</strong></article>;
 }
