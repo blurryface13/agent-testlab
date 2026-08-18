@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
-import { ConfigOptions, Dashboard, Dataset, GenerationOptions, GenerationRun, PolishOptions, PolishRun, PolishSample, PreviewResult, ProviderResponse, loadConfigOptions, loadDashboard, loadGenerationOptions, loadGenerationRun, loadPolishOptions, loadPolishRun, loadProviders, previewRun, startGeneration, startPolish } from "./api";
+import { ConfigOptions, Dashboard, Dataset, GenerationOptions, GenerationRun, PolishOptions, PolishRun, PolishSample, PreviewResult, ProviderResponse, QuotaSnapshot, loadConfigOptions, loadDashboard, loadGenerationOptions, loadGenerationRun, loadPolishOptions, loadPolishRun, loadProviders, loadQuota, previewRun, startGeneration, startPolish } from "./api";
 import { Icon, IconName } from "./icons";
 
 const navItems: Array<[string, IconName]> = [["概览", "overview"], ["数据集", "dataset"], ["生成数据集", "generate"], ["Polish", "polish"], ["运行任务", "runs"], ["结果分析", "analysis"]];
@@ -11,6 +11,8 @@ export function App() {
   const [providers, setProviders] = useState<ProviderResponse | null>(null);
   const [source, setSource] = useState<"api" | "demo">("demo");
   const [active, setActive] = useState("概览");
+  const [quota, setQuota] = useState<QuotaSnapshot | null>(null);
+  const [quotaLoading, setQuotaLoading] = useState(false);
   const [view, setView] = useState<"overview" | "composer" | "generator" | "polish" | "providers">("overview");
 
   const refresh = () => {
@@ -23,6 +25,17 @@ export function App() {
   };
 
   useEffect(refresh, []);
+
+  const fetchQuota = async () => {
+    setQuotaLoading(true);
+    try {
+      setQuota(await loadQuota());
+    } catch {
+      setQuota({ found: false, quotas: [], updated_at: null, message: "查询失败，请确认后端已启动" });
+    } finally {
+      setQuotaLoading(false);
+    }
+  };
 
   const openComposer = () => {
     setActive("运行任务");
@@ -115,9 +128,9 @@ export function App() {
               </section>
 
               <aside className="panel quota-panel">
-                <div className="panel-heading"><h2>额度监控</h2></div>
-                <div className="quota-list">{dashboard.quotas.map((quota) => <div className="quota" key={quota.name}><div className="quota-top"><div><strong>{quota.name}</strong><span>{quota.vendor}</span></div><b>{quota.remaining}</b></div><div className="quota-meter"><i className={quota.tone} style={{ width: `${quota.percent}%` }} /></div></div>)}</div>
-                <button className="quota-link" onClick={openProviders}>管理模型通道 <span><Icon name="forward" size={12} /></span></button>
+                <div className="panel-heading"><h2>额度监控</h2>{quota?.updated_at && <span className="updated">{quota.updated_at} 快照</span>}</div>
+                {quota && quota.quotas.length ? <div className="quota-list">{quota.quotas.map((record) => <div className="quota" key={record.name}><div className="quota-top"><div><strong>{record.name}</strong><span>{record.vendor}</span></div><b>{record.remaining}</b></div><div className="quota-meter"><i className={record.tone} style={{ width: `${record.percent}%` }} /></div></div>)}</div> : <p className="panel-description">{quotaLoading ? "查询中…" : quota?.message || "未查询 · 手动维护快照"}</p>}
+                <button className="quota-link" onClick={() => void fetchQuota()} disabled={quotaLoading}>{quotaLoading ? "查询中…" : "查询额度"} <span><Icon name="forward" size={12} /></span></button>
               </aside>
             </section>
 

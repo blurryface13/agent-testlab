@@ -608,6 +608,25 @@ def get_polish_run(run_id: str) -> dict:
     return {"found": True, "run": polish_run_payload(run)}
 
 
+@app.get("/api/quota/refresh")
+def quota_refresh() -> dict:
+    """手动查询额度：只读本地快照文件，不调用任何外部 API。"""
+    if not QUOTA_SNAPSHOT.exists():
+        return {
+            "found": False, "quotas": [], "updated_at": None,
+            "message": "尚无额度快照，请手动编辑 data/quota_snapshot.json",
+        }
+    snapshot = read_json(QUOTA_SNAPSHOT)
+    records = snapshot.get("quotas", []) if isinstance(snapshot, dict) else []
+    stamp = datetime.fromtimestamp(QUOTA_SNAPSHOT.stat().st_mtime, tz=timezone.utc).astimezone()
+    return {
+        "found": True,
+        "quotas": [record for record in records if isinstance(record, dict)],
+        "updated_at": stamp.strftime("%m-%d %H:%M"),
+        "message": "快照数据",
+    }
+
+
 @app.get("/api/providers")
 def providers() -> dict:
     """Expose configuration state and quota source, never a secret or fake balance."""
