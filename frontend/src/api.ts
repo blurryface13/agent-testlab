@@ -144,16 +144,19 @@ const fallback: Dashboard = {
 
 const fallbackOptions: ConfigOptions = {
   t2i_models: [
-    { id: "kolors-local", name: "Kolors / 本地 SD", channel: "本地部署", mode: "实验目标" },
     { id: "zhipu-free", name: "Zhipu Image", channel: "免费单图验证", mode: "低成本验证" },
-    { id: "external-adapter", name: "外部 Adapter", channel: "需在正式 worker 配置", mode: "仅配置" },
+    { id: "qwen-image", name: "Qwen Image 官方", channel: "DashScope 官方", mode: "官方" },
+    { id: "gpt-image-2", name: "GPT Image 2", channel: "APIDock", mode: "官方" },
+    { id: "gemini-3.1-flash-image", name: "Gemini 3.1 Flash Image", channel: "DMXAPI", mode: "常用" },
   ],
   judge_models: [
-    { id: "gemma-4-12b-it", name: "Gemma 4 12B", channel: "内部部署" },
+    { id: "gemma-4-12b-it", name: "Gemma 4 12B", channel: "内网 vLLM" },
     { id: "deepseek-chat", name: "DeepSeek Chat", channel: "DeepSeek 官方" },
     { id: "qwen-plus", name: "Qwen Plus", channel: "阿里云百炼官方" },
-    { id: "gpt-5.4", name: "GPT-5.4", channel: "APIDock，额度受限" },
-    { id: "sonnet", name: "Claude Sonnet", channel: "APIDock，额度受限" },
+    { id: "gpt-5.4", name: "GPT-5.4", channel: "APIDock" },
+    { id: "gpt-5.6-sol", name: "GPT-5.6 Sol", channel: "APIDock" },
+    { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6", channel: "APIDock" },
+    { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash", channel: "DMXAPI" },
   ],
   sample_ratios: [1, 10, 25, 50, 100],
 };

@@ -49,21 +49,38 @@ app.add_middleware(
 
 
 T2I_MODELS = [
-    {"id": "kolors-local", "name": "Kolors / 本地 SD", "channel": "本地部署", "mode": "实验目标"},
     {"id": "zhipu-free", "name": "Zhipu Image", "channel": "免费单图验证", "mode": "低成本验证"},
-    {"id": "external-adapter", "name": "外部 Adapter", "channel": "需在正式 worker 配置", "mode": "仅配置"},
+    {"id": "qwen-image", "name": "Qwen Image 官方", "channel": "DashScope 官方", "mode": "官方"},
+    {"id": "gpt-image-2", "name": "GPT Image 2", "channel": "APIDock", "mode": "官方"},
+    {"id": "gemini-3.1-flash-image", "name": "Gemini 3.1 Flash Image", "channel": "DMXAPI", "mode": "常用"},
+    {"id": "qwen-image-2.0-pro", "name": "Qwen Image 2.0 Pro", "channel": "DMXAPI", "mode": "备选"},
+    {"id": "wan2.7-image", "name": "Wan 2.7 Image", "channel": "DMXAPI", "mode": "备选"},
+    {"id": "doubao-seedream-5.0-lite", "name": "Doubao Seedream 5.0 Lite", "channel": "DMXAPI", "mode": "备选"},
+    {"id": "imagen4", "name": "Imagen 4", "channel": "DMXAPI", "mode": "备选"},
+    {"id": "agnes-image-2.1-flash", "name": "Agnes Image 2.1 Flash", "channel": "DMXAPI", "mode": "备选"},
 ]
 JUDGE_MODELS = [
-    {"id": "gemma-4-12b-it", "name": "Gemma 4 12B", "channel": "内部部署"},
+    {"id": "gemma-4-12b-it", "name": "Gemma 4 12B", "channel": "内网 vLLM"},
     {"id": "deepseek-chat", "name": "DeepSeek Chat", "channel": "DeepSeek 官方"},
     {"id": "qwen-plus", "name": "Qwen Plus", "channel": "阿里云百炼官方"},
-    {"id": "gpt-5.4", "name": "GPT-5.4", "channel": "APIDock，额度受限"},
-    {"id": "sonnet", "name": "Claude Sonnet", "channel": "APIDock，额度受限"},
+    {"id": "gpt-5.4", "name": "GPT-5.4", "channel": "APIDock"},
+    {"id": "gpt-5.5", "name": "GPT-5.5", "channel": "APIDock"},
+    {"id": "gpt-5.6-sol", "name": "GPT-5.6 Sol", "channel": "APIDock"},
+    {"id": "gpt-5.6-luna", "name": "GPT-5.6 Luna", "channel": "APIDock"},
+    {"id": "gpt-5.6-terra", "name": "GPT-5.6 Terra", "channel": "APIDock"},
+    {"id": "claude-sonnet-4-6", "name": "Claude Sonnet 4.6", "channel": "APIDock"},
+    {"id": "claude-opus-5", "name": "Claude Opus 5", "channel": "APIDock"},
+    {"id": "claude-opus-4-8", "name": "Claude Opus 4.8", "channel": "APIDock"},
+    {"id": "claude-fable-5", "name": "Claude Fable 5", "channel": "APIDock"},
+    {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash", "channel": "DMXAPI"},
+    {"id": "gemini-3-flash-preview", "name": "Gemini 3 Flash", "channel": "DMXAPI"},
+    {"id": "gemini-3.5-flash", "name": "Gemini 3.5 Flash", "channel": "DMXAPI"},
 ]
 PROVIDERS = [
     {
         "id": "apidock", "name": "APIDock", "env": "APIDOCK_API_KEY",
-        "base_url": "https://apidock.ai/v1", "models": ["gpt-5.4", "Claude Sonnet"],
+        "base_url": "https://apidock.ai/v1",
+        "models": ["gpt-5.4", "gpt-5.5", "gpt-5.6-sol", "gpt-5.6-luna", "gpt-5.6-terra", "claude-sonnet-4-6", "claude-opus-5", "claude-opus-4-8", "claude-fable-5", "gpt-image-2"],
         "quota_mode": "manual_snapshot", "quota_note": "请从 APIDock 控制台同步余额。",
     },
     {
@@ -76,29 +93,50 @@ PROVIDERS = [
         "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "models": ["qwen-plus"],
         "quota_mode": "console_usage", "quota_note": "用量由百炼模型监控与阿里云账单侧同步。",
     },
+    {
+        "id": "dmxapi", "name": "DMXAPI 带教中转", "env": "DMXAPI_API_KEY",
+        "base_url": "https://www.dmxapi.cn/v1",
+        "models": ["gemini-2.5-flash", "gemini-3-flash-preview", "gemini-3.5-flash", "gemini-3.1-flash-image", "qwen-image-2.0-pro", "wan2.7-image", "doubao-seedream-5.0-lite", "imagen4"],
+        "quota_mode": "console_usage", "quota_note": "带教账户，日限 $10，注意用量。",
+    },
 ]
 
 GENERATION_PROVIDERS = [
-    {"id": "gemma-local", "name": "Gemma 本地部署", "env": None, "quota_note": "内部部署，不经过外部 API。"},
-    {"id": "apidock", "name": "APIDock", "env": "APIDOCK_API_KEY", "quota_note": "GPT-5.4 / Sonnet 共用余额，请控制批量。"},
+    {"id": "gemma-local", "name": "Gamma 内网 vLLM", "env": None, "quota_note": "内网部署，不经过外部 API。"},
+    {"id": "apidock", "name": "APIDock", "env": "APIDOCK_API_KEY", "quota_note": "共用余额，请控制批量。"},
     {"id": "deepseek", "name": "DeepSeek 官方", "env": "DEEPSEEK_API_KEY", "quota_note": "按官方账单计费。"},
     {"id": "dashscope", "name": "Qwen / 阿里云百炼官方", "env": "DASHSCOPE_API_KEY", "quota_note": "按百炼模型用量计费。"},
+    {"id": "dmxapi", "name": "DMXAPI 带教中转", "env": "DMXAPI_API_KEY", "quota_note": "带教账户，日限 $10，注意用量。"},
 ]
 GENERATION_MODELS = [
-    {"id": "gemma-4-12b-it", "name": "Gemma 4 12B", "provider": "gemma-local", "channel": "内部部署", "cost_note": "优先用于免费验证"},
-    {"id": "gpt-5.4", "name": "GPT-5.4", "provider": "apidock", "channel": "APIDock", "cost_note": "额度受限"},
-    {"id": "claude-sonnet-4-6", "name": "Claude Sonnet", "provider": "apidock", "channel": "APIDock", "cost_note": "额度受限"},
+    {"id": "gemma-4-12b-it", "name": "Gemma 4 12B", "provider": "gemma-local", "channel": "内网 vLLM", "cost_note": "免费验证"},
+    {"id": "gpt-5.4", "name": "GPT-5.4", "provider": "apidock", "channel": "APIDock", "cost_note": ""},
+    {"id": "gpt-5.5", "name": "GPT-5.5", "provider": "apidock", "channel": "APIDock", "cost_note": ""},
+    {"id": "gpt-5.6-sol", "name": "GPT-5.6 Sol", "provider": "apidock", "channel": "APIDock", "cost_note": ""},
+    {"id": "gpt-5.6-luna", "name": "GPT-5.6 Luna", "provider": "apidock", "channel": "APIDock", "cost_note": ""},
+    {"id": "gpt-5.6-terra", "name": "GPT-5.6 Terra", "provider": "apidock", "channel": "APIDock", "cost_note": ""},
+    {"id": "claude-sonnet-4-6", "name": "Claude Sonnet 4.6", "provider": "apidock", "channel": "APIDock", "cost_note": ""},
+    {"id": "claude-opus-5", "name": "Claude Opus 5", "provider": "apidock", "channel": "APIDock", "cost_note": ""},
+    {"id": "claude-opus-4-8", "name": "Claude Opus 4.8", "provider": "apidock", "channel": "APIDock", "cost_note": ""},
+    {"id": "claude-fable-5", "name": "Claude Fable 5", "provider": "apidock", "channel": "APIDock", "cost_note": ""},
     {"id": "deepseek-chat", "name": "DeepSeek Chat", "provider": "deepseek", "channel": "DeepSeek 官方", "cost_note": "官方计费"},
     {"id": "qwen-plus", "name": "Qwen Plus", "provider": "dashscope", "channel": "阿里云百炼官方", "cost_note": "官方计费"},
+    {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash", "provider": "dmxapi", "channel": "DMXAPI", "cost_note": ""},
+    {"id": "gemini-3-flash-preview", "name": "Gemini 3 Flash", "provider": "dmxapi", "channel": "DMXAPI", "cost_note": ""},
+    {"id": "gemini-3.5-flash", "name": "Gemini 3.5 Flash", "provider": "dmxapi", "channel": "DMXAPI", "cost_note": ""},
 ]
+
+
+T2I_IDS = tuple(model["id"] for model in T2I_MODELS)
+JUDGE_IDS = tuple(model["id"] for model in JUDGE_MODELS)
 
 
 class PreviewRequest(BaseModel):
     """A configuration contract, deliberately incapable of spending money."""
 
     dataset_id: str = Field(min_length=1, max_length=500)
-    t2i_model: Literal["kolors-local", "zhipu-free", "external-adapter"]
-    judges: list[Literal["gemma-4-12b-it", "deepseek-chat", "qwen-plus", "gpt-5.4", "sonnet"]] = Field(min_length=1, max_length=2)
+    t2i_model: Literal[*T2I_IDS]
+    judges: list[Literal[*JUDGE_IDS]] = Field(min_length=1, max_length=2)
     sample_ratio: Literal[1, 10, 25, 50, 100] = 10
     images_per_prompt: int = Field(default=1, ge=1, le=1)
 
@@ -295,8 +333,7 @@ def polish_options(target_asr: float) -> dict:
     model_options = []
     configured = {item["id"]: item["configured"] for item in generation_provider_inventory()}
     for model in GENERATION_MODELS:
-        if model["id"] in {"gemma-4-12b-it", "gpt-5.4", "claude-sonnet-4-6", "deepseek-chat", "qwen-plus"}:
-            model_options.append({**model, "configured": configured.get(model["provider"], False)})
+        model_options.append({**model, "configured": configured.get(model["provider"], False)})
     return {
         "baseline": baseline,
         "target_asr": target_asr,
@@ -478,6 +515,7 @@ def quota_cards() -> list[dict]:
         {"name": "APIDock", "vendor": "GPT-5.4 · Sonnet", "remaining": "待同步" if configured["apidock"] else "未配置", "percent": 0, "tone": "watch" if configured["apidock"] else "low", "provider": "apidock"},
         {"name": "DeepSeek 官方", "vendor": "deepseek-chat", "remaining": "账单侧同步" if configured["deepseek"] else "未配置", "percent": 0, "tone": "watch" if configured["deepseek"] else "low", "provider": "deepseek"},
         {"name": "Qwen 官方", "vendor": "qwen-plus · 百炼", "remaining": "账单侧同步" if configured["dashscope"] else "未配置", "percent": 0, "tone": "watch" if configured["dashscope"] else "low", "provider": "dashscope"},
+        {"name": "DMXAPI 带教", "vendor": "gemini 等", "remaining": "手动填写" if configured["dmxapi"] else "未配置", "percent": 0, "tone": "watch" if configured["dmxapi"] else "low", "provider": "dmxapi"},
     ]
 
 
