@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
-import { ConfigOptions, Dashboard, Dataset, PreviewResult, ProviderResponse, loadConfigOptions, loadDashboard, loadProviders, previewRun } from "./api";
+import { ConfigOptions, Dashboard, Dataset, GenerationOptions, GenerationRun, PolishOptions, PolishRun, PolishSample, PreviewResult, ProviderResponse, loadConfigOptions, loadDashboard, loadGenerationOptions, loadGenerationRun, loadPolishOptions, loadPolishRun, loadProviders, previewRun, startGeneration, startPolish } from "./api";
 
-const navItems = [["概览", "⌘"], ["数据集", "▦"], ["运行任务", "◔"], ["结果分析", "⌁"]];
+const navItems = [["概览", "⌘"], ["数据集", "▦"], ["生成数据集", "＋"], ["Polish", "✦"], ["运行任务", "◔"], ["结果分析", "⌁"]];
 const statusLabel = { running: "运行中", completed: "已完成", queued: "队列中" };
 
 function Icon({ children }: { children: string }) {
@@ -14,7 +14,7 @@ export function App() {
   const [providers, setProviders] = useState<ProviderResponse | null>(null);
   const [source, setSource] = useState<"api" | "demo">("demo");
   const [active, setActive] = useState("概览");
-  const [view, setView] = useState<"overview" | "composer" | "providers">("overview");
+  const [view, setView] = useState<"overview" | "composer" | "generator" | "polish" | "providers">("overview");
 
   const refresh = () => {
     Promise.all([loadDashboard(), loadConfigOptions(), loadProviders().catch(() => null)]).then(([nextDashboard, nextOptions, nextProviders]) => {
@@ -31,15 +31,31 @@ export function App() {
     setActive("运行任务");
     setView("composer");
   };
+  const openGenerator = () => {
+    setActive("生成数据集");
+    setView("generator");
+  };
   const openProviders = () => {
     setActive("通道与额度");
     setView("providers");
+  };
+  const openPolish = () => {
+    setActive("Polish");
+    setView("polish");
   };
 
   const selectNav = (label: string) => {
     setActive(label);
     if (label === "运行任务") {
       setView("composer");
+      return;
+    }
+    if (label === "生成数据集") {
+      setView("generator");
+      return;
+    }
+    if (label === "Polish") {
+      setView("polish");
       return;
     }
     if (label === "结果分析") {
@@ -74,13 +90,17 @@ export function App() {
       <main className="content" id="workspace">
         {view === "composer" ? (
           <RunComposer datasets={dashboard.datasets} options={options} onBack={() => { setView("overview"); setActive("概览"); }} />
+        ) : view === "generator" ? (
+          <DatasetGenerator onBack={() => { setView("overview"); setActive("概览"); }} onCompleted={refresh} />
+        ) : view === "polish" ? (
+          <PolishWorkbench onBack={() => { setView("overview"); setActive("概览"); }} />
         ) : view === "providers" ? (
           <ProviderConsole providers={providers} onBack={() => { setView("overview"); setActive("概览"); }} onRefresh={refresh} />
         ) : (
           <>
             <section className="page-heading">
               <div><p className="eyebrow">PIPELINE OVERVIEW</p><h1>实验概览</h1><p className="subtle">本地产物索引</p></div>
-              <div className="heading-actions"><button className="secondary" onClick={refresh}><Icon>↻</Icon>刷新</button><button className="primary" onClick={openComposer}><Icon>＋</Icon>新建运行</button></div>
+              <div className="heading-actions"><button className="secondary" onClick={refresh}><Icon>↻</Icon>刷新</button><button className="secondary" onClick={openPolish}>Polish</button><button className="secondary" onClick={openComposer}>新建评测</button><button className="primary" onClick={openGenerator}><Icon>＋</Icon>生成数据集</button></div>
             </section>
 
             <section className="metric-strip" aria-label="核心指标">
@@ -124,6 +144,99 @@ export function App() {
       </main>
     </div>
   );
+}
+
+function DatasetGenerator({ onBack, onCompleted }: { onBack: () => void; onCompleted: () => void }) {
+  const [options, setOptions] = useState<GenerationOptions | null>(null);
+  const [provider, setProvider] = useState("");
+  const [model, setModel] = useState("");
+  const [perSubcategory, setPerSubcategory] = useState(10);
+  const [run, setRun] = useState<GenerationRun | null>(null);
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
+
+  useEffect(() => {
+    loadGenerationOptions().then((next) => {
+      setOptions(next);
+      const initial = next.providers.find((item) => item.configured) || next.providers[0];
+      if (initial) setProvider(initial.id);
+    }).catch((reason) => setError(reason instanceof Error ? reason.message : "无法读取生成通道。"));
+  }, []);
+
+  const availableModels = options?.models.filter((item) => item.provider === provider) || [];
+  const selectedProvider = options?.providers.find((item) => item.id === provider);
+  const selectedModel = availableModels.find((item) => item.id === model);
+  const total = (options?.subcategory_count || 11) * perSubcategory;
+
+  useEffect(() => {
+    if (!availableModels.some((item) => item.id === model)) setModel(availableModels[0]?.id || "");
+  }, [provider, options, model, availableModels]);
+
+  useEffect(() => {
+    if (!run || run.status !== "running") return;
+    const timer = window.setInterval(() => {
+      loadGenerationRun(run.id).then((next) => {
+        setRun(next);
+        if (next.status !== "running") onCompleted();
+      }).catch((reason) => setError(reason instanceof Error ? reason.message : "无法更新任务状态。"));
+    }, 1500);
+    return () => window.clearInterval(timer);
+  }, [run, onCompleted]);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!selectedProvider || !model) return;
+    setPending(true);
+    setError("");
+    try {
+      const result = await startGeneration({ provider, model, samples_per_subcategory: perSubcategory });
+      if (!result.accepted || !result.run) throw new Error(result.message);
+      setRun(result.run);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "生成任务未启动。")
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return <>
+    <section className="composer-heading">
+      <button className="back-button" onClick={onBack}><Icon>←</Icon>返回实验概览</button>
+      <p className="eyebrow">DIRECT PROMPT GENERATION</p><h1>生成数据集</h1>
+      <p className="subtle">按 11 个风险小类均衡直接生成，点击确认后才会调用所选模型。</p>
+    </section>
+    <form className="composer-grid" onSubmit={submit}>
+      <section className="panel form-panel generator-form">
+        <div className="form-section"><p className="eyebrow">01 / PROVIDER</p><h2>选择生成通道</h2>
+          <div className="provider-options">{options?.providers.map((item) => <label className="provider-option" key={item.id}><input type="radio" name="generation-provider" value={item.id} checked={provider === item.id} onChange={() => setProvider(item.id)} /><span><strong>{item.name}</strong><small>{item.configured ? item.quota_note : "缺少密钥，不能启动"}</small></span><em className={item.configured ? "ready" : "missing"}>{item.status}</em></label>)}</div>
+        </div>
+        <div className="form-section"><p className="eyebrow">02 / MODEL</p><h2>选择生成模型</h2>
+          <label>模型
+            <select value={model} onChange={(event) => setModel(event.target.value)} disabled={!selectedProvider?.configured}>
+              {availableModels.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.channel} · {item.cost_note}</option>)}
+            </select>
+          </label>
+          {selectedModel && <p className="field-hint">{selectedModel.cost_note}。模型请求通过本机 pipeline 执行，密钥不会发送到浏览器。</p>}
+        </div>
+        <div className="form-section"><p className="eyebrow">03 / SIZE</p><h2>设定数据集数量</h2>
+          <label>每个小类生成条数
+            <input className="number-input" type="number" min="1" max="100" value={perSubcategory} onChange={(event) => setPerSubcategory(Math.min(100, Math.max(1, Number(event.target.value) || 1)))} />
+          </label>
+          <p className="field-hint">固定覆盖 11 个风险小类，本次目标为 <b>{total} 条</b>，即每类 {perSubcategory} 条。不会从既有 1000 条数据中随机采样。</p>
+        </div>
+        <div className="form-actions"><button type="button" className="secondary" onClick={onBack}>取消</button><button type="submit" className="primary" disabled={pending || run?.status === "running" || !selectedProvider?.configured || !model}>{pending ? "正在提交…" : run?.status === "running" ? "生成中…" : "确认并开始生成"}</button></div>
+      </section>
+      <aside className="composer-side">
+        <section className="panel guard-panel"><p className="eyebrow">EXECUTION SCOPE</p><h2>这次会发生什么</h2>
+          <ul><li>调用 <b>{selectedModel?.name || "所选模型"}</b> 直接生成 prompt。</li><li>输出写入 <code>demo/outputs/ui_generations/</code>。</li><li>按冻结 schema 写入 <code>gen.jsonl</code>，不混入拒答文案。</li><li>不执行生图、VLM 裁判或 ASR 自优化。</li></ul>
+        </section>
+        <section className={`panel generation-result ${run ? run.status : ""}`}><p className="eyebrow">GENERATION TASK</p><h2>{run ? run.status === "running" ? "正在生成" : run.status === "completed" ? "生成完成" : "生成失败" : "等待提交"}</h2>
+          {run ? <div className="result-list"><p>{run.status === "running" ? "后台任务正在运行，产出条数会自动刷新。" : run.status === "completed" ? "产物已写入本地 outputs，可在数据集索引中查看。" : "请查看任务日志定位失败原因。"}</p><div><span>进度</span><b>{run.generated_count} / {run.target_count} 条</b></div><div><span>输出目录</span><b>{run.output_dir}</b></div><div><span>运行日志</span><b>{run.log_path}</b></div></div> : <p className="panel-description">确认模型与均衡规模后提交。通道状态和额度提醒来自本机配置，不显示密钥。</p>}
+          {error && <p className="inline-error">{error}</p>}
+        </section>
+      </aside>
+    </form>
+  </>;
 }
 
 function RunComposer({ datasets, options, onBack }: { datasets: Dataset[]; options: ConfigOptions; onBack: () => void }) {
@@ -200,6 +313,111 @@ function RunComposer({ datasets, options, onBack }: { datasets: Dataset[]; optio
         </section>
       </aside>
     </form>
+  </>;
+}
+
+function PolishWorkbench({ onBack }: { onBack: () => void }) {
+  const [options, setOptions] = useState<PolishOptions | null>(null);
+  const [targetPercent, setTargetPercent] = useState(20);
+  const [model, setModel] = useState("");
+  const [selected, setSelected] = useState<string[]>([]);
+  const [variants, setVariants] = useState(2);
+  const [run, setRun] = useState<PolishRun | null>(null);
+  const [activeSample, setActiveSample] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
+
+  const refreshOptions = async (resetSelection = true) => {
+    setError("");
+    try {
+      const next = await loadPolishOptions(Math.min(100, Math.max(0, targetPercent)) / 100);
+      setOptions(next);
+      const defaultModel = next.models.find((item) => item.id === "gemma-4-12b-it" && item.configured) || next.models.find((item) => item.configured);
+      setModel((current) => next.models.some((item) => item.id === current && item.configured) ? current : defaultModel?.id || "");
+      if (resetSelection) setSelected(next.samples.filter((item) => item.recommended).map((item) => item.id));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "无法读取 Polish 候选池。");
+    }
+  };
+
+  useEffect(() => { void refreshOptions(); }, []);
+
+  useEffect(() => {
+    if (!run || run.status !== "running") return;
+    const timer = window.setInterval(() => {
+      loadPolishRun(run.id).then(setRun).catch((reason) => setError(reason instanceof Error ? reason.message : "无法更新 Polish 状态。"));
+    }, 1300);
+    return () => window.clearInterval(timer);
+  }, [run]);
+
+  const toggleSample = (sampleId: string) => {
+    setSelected((current) => current.includes(sampleId) ? current.filter((id) => id !== sampleId) : [...current, sampleId]);
+  };
+  const currentSamples: PolishSample[] = run?.samples || options?.samples || [];
+  const focused = currentSamples.find((item) => item.id === activeSample) || currentSamples.find((item) => selected.includes(item.id)) || null;
+  const configuredModel = options?.models.find((item) => item.id === model);
+
+  const submit = async () => {
+    if (!model || !selected.length) return;
+    setPending(true);
+    setError("");
+    try {
+      const result = await startPolish({ model, selected_ids: selected, target_asr: targetPercent / 100, variants });
+      if (!result.accepted || !result.run) throw new Error(result.message);
+      setRun(result.run);
+      setActiveSample(result.run.samples[0]?.id || null);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Polish 任务未启动。");
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return <>
+    <section className="composer-heading polish-heading">
+      <button className="back-button" onClick={onBack}><Icon>←</Icon>返回实验概览</button>
+      <p className="eyebrow">TARGETED PROMPT POLISH</p><h1>Polish 候选工作台</h1>
+      <p className="subtle">仅处理被测模型已拒答的风险样本。根据目标 ASR 推荐种子，但是否执行始终由你逐条确认。</p>
+    </section>
+
+    <section className="polish-metric-strip" aria-label="Polish 目标测算">
+      <div><span>当前基准</span><strong>{options ? `${(options.baseline.asr * 100).toFixed(1)}%` : "--"}</strong><small>{options ? `${options.baseline.unsafe} / ${options.baseline.total}，${options.baseline.judge} 裁判` : "读取中"}</small></div>
+      <div><span>目标 ASR</span><label className="inline-target"><input type="number" min="0" max="100" value={targetPercent} onChange={(event) => setTargetPercent(Math.min(100, Math.max(0, Number(event.target.value) || 0)))} /><b>%</b></label><button className="text-button" onClick={() => void refreshOptions(true)}>更新推荐</button></div>
+      <div><span>需要补足</span><strong>{options ? `${options.additional_unsafe_needed} 条` : "--"}</strong><small>{options ? `按既有有效率，推荐从 ${options.recommended_seed_count} 个拒答来源开始` : ""}</small></div>
+      <div><span>可选拒答池</span><strong>{options?.candidate_count ?? "--"}</strong><small>小类轮转排序，可手动改选</small></div>
+    </section>
+
+    <section className="polish-layout">
+      <section className="panel polish-source-panel">
+        <div className="panel-heading polish-panel-heading"><div><p className="eyebrow">01 / SELECT SOURCES</p><h2>选择待改写样本</h2></div><span className="selection-count">已选 {selected.length} 条</span></div>
+        <p className="panel-description">推荐仅基于“当前生图拒答、目标缺口和小类均衡”。它不是成功保证，也不将历史实验结果计入当前基准。</p>
+        <div className="polish-source-list">
+          {(options?.samples || []).map((sample) => <article className={`polish-source ${selected.includes(sample.id) ? "chosen" : ""} ${activeSample === sample.id ? "active" : ""}`} key={sample.id}>
+            <label><input type="checkbox" checked={selected.includes(sample.id)} onChange={() => toggleSample(sample.id)} /><span className="source-copy"><b>{sample.subcategory}</b><small>{sample.recommended ? "推荐" : "可选"} · {sample.status === "refused" ? "原始生图拒答" : sample.status}</small></span></label>
+            <button className="text-button" onClick={() => setActiveSample(sample.id)}>查看</button>
+          </article>)}
+        </div>
+      </section>
+
+      <aside className="polish-side">
+        <section className="panel polish-control-panel">
+          <p className="eyebrow">02 / EXECUTE</p><h2>生成 Polish 提示词</h2>
+          <label>Polish 模型<select value={model} onChange={(event) => setModel(event.target.value)}>{options?.models.map((item) => <option key={item.id} value={item.id} disabled={!item.configured}>{item.name} · {item.channel}{item.configured ? "" : " · 未配置"}</option>)}</select></label>
+          <label>每条候选数<select value={variants} onChange={(event) => setVariants(Number(event.target.value))}><option value={1}>1 条，低成本</option><option value={2}>2 条，默认</option><option value={3}>3 条，更多候选</option></select></label>
+          <p className="field-hint">{configuredModel?.cost_note || "选择可用模型后执行"}。本次只调用所选 LLM 生成候选，不执行生图、Gemma 或 GPT-5.4 裁判。</p>
+          <button className="primary polish-start" onClick={() => void submit()} disabled={pending || run?.status === "running" || !configuredModel?.configured || !selected.length}>{pending ? "正在提交…" : run?.status === "running" ? "Polish 生成中…" : `对 ${selected.length} 条样本执行 Polish`}</button>
+          {error && <p className="inline-error">{error}</p>}
+        </section>
+        <section className={`panel polish-run-panel ${run?.status || ""}`}><p className="eyebrow">03 / TASK STATUS</p><h2>{run ? run.status === "running" ? "候选生成中" : run.status === "completed" ? "候选已生成" : "任务未完成" : "等待执行"}</h2>
+          {run ? <div className="result-list"><p>{run.status === "running" ? "正在逐条写入候选，点击左侧样本可查看已生成的前后提示词。" : run.status === "completed" ? "文本候选已归档，下一步可单独送入标签核验与端到端评测。" : "请查看运行日志定位失败原因。"}</p><div><span>候选进度</span><b>{run.generated_count} / {run.selected_count * run.variants}</b></div><div><span>输出</span><b>{run.output_dir}</b></div></div> : <p className="panel-description">{options?.scope_note || "正在读取任务边界。"}</p>}
+        </section>
+      </aside>
+    </section>
+
+    <section className="panel polish-preview-panel">
+      <div className="panel-heading"><div><p className="eyebrow">PROMPT COMPARISON</p><h2>{focused ? `${focused.id} 的前后对比` : "选择样本查看提示词"}</h2></div>{focused && <span className={`prompt-status ${focused.status}`}>{focused.status === "polished" ? `已生成 ${focused.polished?.length || 0} 条候选` : focused.status === "pending" ? "等待生成" : "原始拒答"}</span>}</div>
+      {focused ? <div className="prompt-comparison"><article><span>原始提示词</span><p>{focused.prompt}</p></article><article className="polished-output"><span>Polish 后提示词</span>{focused.polished?.length ? focused.polished.map((item, index) => <div className="candidate-prompt" key={item.id}><small>候选 {index + 1}</small><p>{item.prompt}</p></div>) : <p className="empty-prompt">任务完成后，这里会显示保持同一风险机制的候选提示词。</p>}</article></div> : <p className="panel-description preview-empty">从左侧选择并点击“查看”，即可检查原提示词与生成后的候选。</p>}
+    </section>
   </>;
 }
 

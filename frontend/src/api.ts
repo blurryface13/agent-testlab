@@ -39,6 +39,59 @@ export type PreviewResult = {
   message: string;
   selection?: { dataset_name: string; dataset_count: number; selected_prompts: number; estimated_images: number; judges: string[]; t2i_model: string; sample_ratio: number };
 };
+export type GenerationProvider = { id: string; name: string; configured: boolean; status: string; quota_note: string };
+export type GenerationModel = { id: string; name: string; provider: string; channel: string; cost_note: string };
+export type GenerationOptions = { providers: GenerationProvider[]; models: GenerationModel[]; subcategory_count: number };
+export type GenerationRun = {
+  id: string;
+  status: "running" | "completed" | "failed";
+  provider: string;
+  model: string;
+  samples_per_subcategory: number;
+  target_count: number;
+  generated_count: number;
+  created_at: string;
+  output_dir: string;
+  log_path: string;
+  return_code: number | null;
+};
+export type GenerationStartResult = { accepted: boolean; message: string; run?: GenerationRun };
+export type PolishModel = GenerationModel & { configured: boolean };
+export type PolishSample = {
+  id: string;
+  category: string;
+  subcategory: string;
+  prompt: string;
+  status: "refused" | "pending" | "polished" | "not_generated";
+  recommended?: boolean;
+  rationale?: string;
+  polished?: Array<{ id: string; prompt: string }>;
+};
+export type PolishOptions = {
+  baseline: { dataset_path: string; total: number; unsafe: number; asr: number; judge: string };
+  target_asr: number;
+  additional_unsafe_needed: number;
+  historical_source_promotion_rate: number;
+  recommended_seed_count: number;
+  candidate_count: number;
+  models: PolishModel[];
+  samples: PolishSample[];
+  scope_note: string;
+};
+export type PolishRun = {
+  id: string;
+  status: "running" | "completed" | "failed";
+  model: string;
+  target_asr: number;
+  selected_count: number;
+  variants: number;
+  generated_count: number;
+  output_dir: string;
+  log_path: string;
+  return_code: number | null;
+  samples: PolishSample[];
+};
+export type PolishStartResult = { accepted: boolean; message: string; run?: PolishRun };
 
 export type Dashboard = {
   asr: number;
@@ -139,4 +192,54 @@ export async function previewRun(payload: { dataset_id: string; t2i_model: strin
   });
   if (!response.ok) throw new Error("预检服务不可用");
   return await response.json() as PreviewResult;
+}
+
+export async function loadGenerationOptions(): Promise<GenerationOptions> {
+  const response = await fetch("/api/generation/options");
+  if (!response.ok) throw new Error("生成通道配置服务不可用");
+  return await response.json() as GenerationOptions;
+}
+
+export async function startGeneration(payload: { provider: string; model: string; samples_per_subcategory: number }): Promise<GenerationStartResult> {
+  const response = await fetch("/api/generation/start", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error("生成任务未能提交");
+  return await response.json() as GenerationStartResult;
+}
+
+export async function loadGenerationRun(runId: string): Promise<GenerationRun> {
+  const response = await fetch(`/api/generation/runs/${encodeURIComponent(runId)}`);
+  if (!response.ok) throw new Error("无法读取生成任务状态");
+  const payload = await response.json() as { found: boolean; message?: string; run?: GenerationRun };
+  if (!payload.found || !payload.run) throw new Error(payload.message || "生成任务不存在");
+  return payload.run;
+}
+
+export async function loadPolishOptions(targetAsr = 0.2): Promise<PolishOptions> {
+  const response = await fetch(`/api/polish/options?target_asr=${encodeURIComponent(targetAsr)}`);
+  if (!response.ok) throw new Error("Polish 选样服务不可用");
+  const payload = await response.json() as PolishOptions & { error?: string };
+  if (payload.error) throw new Error(payload.error);
+  return payload;
+}
+
+export async function startPolish(payload: { model: string; selected_ids: string[]; target_asr: number; variants: number }): Promise<PolishStartResult> {
+  const response = await fetch("/api/polish/start", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error("Polish 任务未能提交");
+  return await response.json() as PolishStartResult;
+}
+
+export async function loadPolishRun(runId: string): Promise<PolishRun> {
+  const response = await fetch(`/api/polish/runs/${encodeURIComponent(runId)}`);
+  if (!response.ok) throw new Error("无法读取 Polish 任务状态");
+  const payload = await response.json() as { found: boolean; message?: string; run?: PolishRun };
+  if (!payload.found || !payload.run) throw new Error(payload.message || "Polish 任务不存在");
+  return payload.run;
 }

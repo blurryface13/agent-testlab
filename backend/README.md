@@ -10,6 +10,11 @@ cd backend
 - `GET /api/config/options`：返回本地工作台允许配置的被测模型、裁判和采样比例。
 - `GET /api/providers`：返回 APIDock、DeepSeek 官方和阿里云百炼 Qwen 官方通道的安全配置状态，不返回 API Key。
 - `POST /api/runs/preview`：验证运行单并计算采样量，固定每条提示词 `1` 张图；不执行模型调用、不读取密钥、不写入 demo。
+- `GET /api/generation/options`：返回可用于数据集生成的来源、模型及其本机配置状态。
+- `POST /api/generation/start`：在用户从前端明确提交后，启动一次风险提示词数据集生成；数量按 11 个小类均分，产物写入 `demo/outputs/ui_generations/`。
+- `GET /api/generation/runs/{run_id}`：返回本次生成的状态、已写入条数及日志位置。
+
+除上述显式启动接口外，浏览、预览和额度展示均不会调用模型。前端不会接触 API Key；后端仅从相邻 `demo/.env` 读取密钥以运行已确认的任务。
 
 服务会从相邻 `demo/.env` 读取下列变量是否存在，并把其用于后续正式 worker 路由；密钥不会发送给前端或写入日志：
 
