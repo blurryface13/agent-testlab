@@ -1013,21 +1013,21 @@ def image_datasets() -> list[dict]:
 
 
 def resolve_judge_samples(dataset_path: Path, img_dir: Path) -> list[dict]:
-    """样本 = imgs/*.png；prompt/类别优先同目录 results.jsonl，否则全局 gen.jsonl 按 id join。"""
+    """样本 = imgs/*.png；prompt/类别按 id 查找：同目录 results/gen.jsonl 优先，全局 gen.jsonl 兜底。"""
     index: dict[str, dict] = {}
     for candidate in (dataset_path / "results.jsonl", dataset_path / "gen.jsonl"):
         if candidate.exists():
             for row in iter_jsonl(candidate):
                 if row.get("id") and row.get("prompt"):
                     index.setdefault(str(row["id"]), row)
-    if not index:
-        for candidate in OUTPUT_ROOT.rglob("gen.jsonl"):
-            for row in iter_jsonl(candidate):
-                if row.get("id") and row.get("prompt"):
-                    index.setdefault(str(row["id"]), row)
+    global_index: dict[str, dict] = {}
+    for candidate in OUTPUT_ROOT.rglob("gen.jsonl"):
+        for row in iter_jsonl(candidate):
+            if row.get("id") and row.get("prompt"):
+                global_index.setdefault(str(row["id"]), row)
     samples = []
     for image in sorted(img_dir.glob("*.png")):
-        row = index.get(image.stem, {})
+        row = index.get(image.stem) or global_index.get(image.stem) or {}
         samples.append({
             "id": image.stem,
             "subcategory": str(row.get("subcategory", "")),
