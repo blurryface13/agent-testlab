@@ -1,8 +1,8 @@
 import { FormEvent, useEffect, useState } from "react";
-import { ConfigOptions, Dashboard, Dataset, GenerationOptions, GenerationRun, PolishOptions, PolishRun, PolishSample, PreviewResult, ProviderResponse, QuotaSnapshot, loadConfigOptions, loadDashboard, loadGenerationOptions, loadGenerationRun, loadPolishOptions, loadPolishRun, loadProviders, loadQuota, previewRun, startGeneration, startPolish } from "./api";
+import { ConfigOptions, Dashboard, Dataset, GenerationOptions, GenerationRun, PolishOptions, PolishRun, PolishSample, PreviewResult, PromptView, ProviderResponse, QuotaSnapshot, loadConfigOptions, loadDashboard, loadGenerationOptions, loadGenerationRun, loadPolishOptions, loadPolishRun, loadPrompts, loadProviders, loadQuota, previewRun, startGeneration, startPolish } from "./api";
 import { Icon, IconName } from "./icons";
 
-const navItems: Array<[string, IconName]> = [["概览", "overview"], ["数据集", "dataset"], ["生成数据集", "generate"], ["Polish", "polish"], ["运行任务", "runs"], ["结果分析", "analysis"]];
+const navItems: Array<[string, IconName]> = [["概览", "overview"], ["数据集", "dataset"], ["生成数据集", "generate"], ["Polish", "polish"], ["运行任务", "runs"], ["结果分析", "analysis"], ["日志", "log"]];
 const statusLabel = { running: "运行中", completed: "已完成", queued: "队列中" };
 
 export function App() {
@@ -13,7 +13,7 @@ export function App() {
   const [active, setActive] = useState("概览");
   const [quota, setQuota] = useState<QuotaSnapshot | null>(null);
   const [quotaLoading, setQuotaLoading] = useState(false);
-  const [view, setView] = useState<"overview" | "composer" | "generator" | "polish" | "providers">("overview");
+  const [view, setView] = useState<"overview" | "composer" | "generator" | "polish" | "providers" | "logs">("overview");
 
   const refresh = () => {
     Promise.all([loadDashboard(), loadConfigOptions(), loadProviders().catch(() => null)]).then(([nextDashboard, nextOptions, nextProviders]) => {
@@ -73,6 +73,10 @@ export function App() {
       setTimeout(() => document.getElementById("pipeline")?.scrollIntoView({ behavior: "smooth" }), 0);
       return;
     }
+    if (label === "日志") {
+      setView("logs");
+      return;
+    }
     setView("overview");
     if (label === "数据集") setTimeout(() => document.getElementById("datasets")?.scrollIntoView({ behavior: "smooth" }), 0);
   };
@@ -106,6 +110,8 @@ export function App() {
           <PolishWorkbench onBack={() => { setView("overview"); setActive("概览"); }} />
         ) : view === "providers" ? (
           <ProviderConsole providers={providers} onBack={() => { setView("overview"); setActive("概览"); }} onRefresh={refresh} />
+        ) : view === "logs" ? (
+          <LogsPage datasets={dashboard.datasets} onBack={() => { setView("overview"); setActive("概览"); }} />
         ) : (
           <>
             <section className="page-heading">
@@ -416,6 +422,56 @@ function PolishWorkbench({ onBack }: { onBack: () => void }) {
     <section className="panel polish-preview-panel">
       <div className="panel-heading"><div><p className="eyebrow">PROMPT COMPARISON</p><h2>{focused ? `${focused.id} 的前后对比` : "选择样本查看提示词"}</h2></div>{focused && <span className={`prompt-status ${focused.status}`}>{focused.status === "polished" ? `已生成 ${focused.polished?.length || 0} 条候选` : focused.status === "pending" ? "等待生成" : "原始拒答"}</span>}</div>
       {focused ? <div className="prompt-comparison"><article><span>原始提示词</span><p>{focused.prompt}</p></article><article className="polished-output"><span>Polish 后提示词</span>{focused.polished?.length ? focused.polished.map((item, index) => <div className="candidate-prompt" key={item.id}><small>候选 {index + 1}</small><p>{item.prompt}</p></div>) : <p className="empty-prompt">暂无候选</p>}</article></div> : null}
+    </section>
+  </>;
+}
+
+function LogsPage({ datasets, onBack }: { datasets: Dataset[]; onBack: () => void }) {
+  const nodeLabels: Array<[string, string]> = [["judge", "裁判"], ["generate", "生成"], ["polish", "Polish"], ["label", "标签"], ["verify", "校验"]];
+  const [node, setNode] = useState("judge");
+  const [datasetId, setDatasetId] = useState(datasets[0]?.id || "");
+  const [view, setView] = useState<PromptView | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = async (nextNode: string, nextDataset: string) => {
+    setLoading(true);
+    setError("");
+    try {
+      const result = await loadPrompts(nextNode, nextDataset || undefined);
+      if (!result.found) throw new Error(result.message || "无结果");
+      setView(result);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "提示词还原失败");
+      setView(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { void load(node, datasetId); }, []);
+
+  return <>
+    <section className="composer-heading">
+      <button className="back-button" onClick={onBack}><Icon name="back" />返回实验概览</button>
+      <p className="eyebrow">NODE PROMPT VIEWER</p><h1>节点提示词</h1>
+    </section>
+    <section className="panel log-panel">
+      <div className="log-toolbar">
+        <div className="log-tabs">{nodeLabels.map(([id, label]) => <button key={id} className={node === id ? "log-tab active" : "log-tab"} onClick={() => { setNode(id); void load(id, datasetId); }}>{label}</button>)}</div>
+        <label className="log-dataset">数据集
+          <select value={datasetId} onChange={(event) => { setDatasetId(event.target.value); void load(node, event.target.value); }}>
+            {datasets.map((dataset) => <option key={dataset.id} value={dataset.id}>{dataset.name} · {dataset.count} 条</option>)}
+          </select>
+        </label>
+        <button className="secondary" onClick={() => void load(node, datasetId)} disabled={loading}><Icon name="refresh" />{loading ? "还原中…" : "还原"}</button>
+      </div>
+      {error && <p className="inline-error">{error}</p>}
+      {view && <div className="log-body">
+        <div className="log-meta"><span>样本 <b>{view.sample_id}</b></span><span>小类 <b>{view.subcategory}</b></span>{view.category ? <span>大类 <b>{view.category}</b></span> : null}{view.note ? <span className="log-note">{view.note}</span> : null}</div>
+        <div className="log-block"><div className="log-block-head"><b>SYSTEM</b><span>{view.system?.length ?? 0} 字符</span></div><pre>{view.system}</pre></div>
+        <div className="log-block"><div className="log-block-head"><b>USER</b><span>{view.user?.length ?? 0} 字符</span></div><pre>{view.user}</pre></div>
+      </div>}
     </section>
   </>;
 }

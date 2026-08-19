@@ -184,6 +184,27 @@ export async function loadConfigOptions(): Promise<ConfigOptions> {
 export type QuotaRecord = { name: string; vendor: string; remaining: string; percent: number; tone: "good" | "watch" | "low"; provider?: string };
 export type QuotaSnapshot = { found: boolean; quotas: QuotaRecord[]; updated_at: string | null; message: string };
 
+export type PromptView = {
+  found: boolean;
+  node: string;
+  sample_id?: string;
+  subcategory?: string;
+  category?: string;
+  system?: string;
+  user?: string;
+  note?: string;
+  dataset_id?: string;
+  message?: string;
+};
+
+export async function loadPrompts(node: string, datasetId?: string): Promise<PromptView> {
+  const query = new URLSearchParams({ node });
+  if (datasetId) query.set("dataset_id", datasetId);
+  const response = await fetch(`/api/logs/prompts?${query.toString()}`);
+  if (!response.ok) throw new Error("提示词还原服务不可用");
+  return await response.json() as PromptView;
+}
+
 export async function loadQuota(): Promise<QuotaSnapshot> {
   const response = await fetch("/api/quota/refresh");
   if (!response.ok) throw new Error("额度查询服务不可用");

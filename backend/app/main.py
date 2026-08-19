@@ -646,6 +646,42 @@ def get_polish_run(run_id: str) -> dict:
     return {"found": True, "run": polish_run_payload(run)}
 
 
+PROMPT_RENDER_SCRIPT = PROJECT_ROOT / "backend" / "app" / "prompt_render.py"
+
+
+@app.get("/api/logs/prompts")
+def log_prompts(node: str = "judge", dataset_id: str = "", sample_id: str = "") -> dict:
+    """还原指定节点 LLM 收到的完整提示词（system + user）。只读，不触发任何模型调用。"""
+    if node not in {"judge", "generate", "polish", "label", "verify"}:
+        return {"found": False, "message": f"未知节点 {node}"}
+    if not dataset_id:
+        datasets = dataset_inventory()
+        dataset_id = datasets[0]["id"] if datasets else ""
+    dataset_path = OUTPUT_ROOT / dataset_id if dataset_id else None
+    if dataset_path is None or not dataset_path.exists():
+        return {"found": False, "message": "数据集不存在，请先选择数据集。"}
+    command = [
+        pipeline_python(), str(PROMPT_RENDER_SCRIPT),
+        "--node", node, "--dataset", str(dataset_path),
+    ]
+    if sample_id:
+        command += ["--sample-id", sample_id]
+    try:
+        proc = subprocess.run(
+            command, capture_output=True, text=True, timeout=90,
+            cwd=str(PIPELINE_ROOT),
+            env={**os.environ, "PYTHONPATH": "", "PYTHONUNBUFFERED": "1"},
+        )
+    except subprocess.TimeoutExpired:
+        return {"found": False, "message": "提示词还原超时（90s）。"}
+    try:
+        payload = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        return {"found": False, "message": f"还原脚本输出异常：{proc.stderr[-300:] or proc.stdout[-300:]}"}
+    payload["dataset_id"] = dataset_id
+    return payload
+
+
 @app.get("/api/quota/refresh")
 def quota_refresh() -> dict:
     """手动查询额度：只读本地快照文件，不调用任何外部 API。"""
