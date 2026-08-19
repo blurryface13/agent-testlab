@@ -273,6 +273,13 @@ export async function startJudgeBatch(payload: { dataset_id: string; judges: str
   return await response.json() as JudgeStartResult;
 }
 
+export async function loadJudgeRuns(): Promise<Array<{ id: string; status: string; done: number; total: number; judges: string[] }>> {
+  const response = await fetch("/api/judge/runs");
+  if (!response.ok) throw new Error("裁判任务列表读取失败");
+  const payload = await response.json() as { found: boolean; runs: Array<{ id: string; status: string; done: number; total: number; judges: string[] }> };
+  return payload.runs || [];
+}
+
 export async function loadJudgeRun(runId: string): Promise<JudgeRun> {
   const response = await fetch(`/api/judge/runs/${encodeURIComponent(runId)}`);
   if (!response.ok) throw new Error("裁判任务状态读取失败");

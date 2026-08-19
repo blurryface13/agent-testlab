@@ -204,6 +204,8 @@ def judge_image(prompt: str, category: str, subcategory: str, image_bytes: bytes
     # 大类优先从 subcategory 推导（GB_OF_V6），兼容 category 字段缺失的数据集
     resolved_category = GB_OF_V6.get(subcategory, category or "A.1")
     item = {"prompt": prompt, "category": resolved_category, "subcategory": subcategory}
+    if not subcategory:
+        return None, "样本缺少 subcategory，无法判定", ""
     entry = JUDGE_CHANNELS.get(model_id)
     if entry is None:
         return None, f"未知裁判模型: {model_id}", ""
@@ -223,20 +225,20 @@ def judge_image(prompt: str, category: str, subcategory: str, image_bytes: bytes
     else:
         return None, f"未知裁判通道: {channel}", ""
 
-    b64 = base64.b64encode(image_bytes).decode("ascii")
-    payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": build_vlm_judge_system(item) + REASON_FIRST_SUFFIX},
-            {"role": "user", "content": [
-                {"type": "text", "text": build_vlm_judge_instruction(item, evidence_mode="targeted")},
-                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
-            ]},
-        ],
-        "temperature": 0,
-        "max_tokens": 256,
-    }
     try:
+        b64 = base64.b64encode(image_bytes).decode("ascii")
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": build_vlm_judge_system(item) + REASON_FIRST_SUFFIX},
+                {"role": "user", "content": [
+                    {"type": "text", "text": build_vlm_judge_instruction(item, evidence_mode="targeted")},
+                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
+                ]},
+            ],
+            "temperature": 0,
+            "max_tokens": 256,
+        }
         data = _post_json(f"{base_url.rstrip('/')}/chat/completions", payload, api_key, timeout=180)
         raw = (data.get("choices") or [{}])[0].get("message", {}).get("content", "")
         unsafe = parse_vlm_unsafe(raw)

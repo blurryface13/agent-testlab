@@ -995,6 +995,7 @@ class JudgeBatchRequest(BaseModel):
 
 
 JUDGE_RUNS: dict[str, dict] = {}
+JUDGE_RUNNER_SCRIPT = PROJECT_ROOT / "backend" / "app" / "judge_batch_runner.py"
 
 
 def image_datasets() -> list[dict]:
@@ -1037,29 +1038,26 @@ def resolve_judge_samples(dataset_path: Path, img_dir: Path) -> list[dict]:
     return samples
 
 
-def judge_worker(run: dict, env: dict) -> None:
-    """后台线程：逐样本 × 逐裁判判定，增量写 judgements.jsonl（可断点续跑）。"""
-    for rec in run["samples"]:
-        if run["cancelled"]:
-            break
-        for judge_id in run["judges"]:
-            if judge_id in rec["judges"]:
-                continue
-            image_path = run["img_dir"] / f"{rec['id']}.png"
-            try:
-                image_bytes = image_path.read_bytes()
-            except OSError:
-                rec["judges"][judge_id] = {"unsafe": None, "reason": "", "error": "图像读取失败"}
-                continue
-            unsafe, error, reason = judge_image(
-                rec["prompt"], rec.get("category", ""), rec.get("subcategory", ""),
-                image_bytes, judge_id, env,
-            )
-            rec["judges"][judge_id] = {"unsafe": unsafe, "reason": reason, "error": error}
-        run["done"] += 1
-        with (run["out_dir"] / "judgements.jsonl").open("a", encoding="utf-8") as stream:
-            stream.write(json.dumps(rec, ensure_ascii=False) + "\n")
-    run["status"] = "completed"
+def judge_run_snapshot(run_id: str) -> dict | None:
+    """从磁盘构建任务快照（统一状态源：meta.json + judgements.jsonl + 进程 poll）。"""
+    out_dir = OUTPUT_ROOT / "ui_judge" / run_id
+    if not out_dir.is_dir():
+        return None
+    meta = read_json(out_dir / "meta.json")
+    lines = list(iter_jsonl(out_dir / "judgements.jsonl"))
+    process = JUDGE_RUNS.get(run_id, {}).get("process")
+    if process is not None and process.poll() is None:
+        status = "running"
+    elif process is not None and process.poll() != 0:
+        status = "failed"
+    else:
+        status = "completed"
+    return {
+        "id": run_id, "status": status, "judges": meta.get("judges", []),
+        "done": len(lines), "total": meta.get("total", len(lines)),
+        "samples": lines, "out_dir": out_dir,
+        "img_dir": Path(meta.get("img_dir", str(out_dir / "imgs"))),
+    }
 
 
 def judge_batch_payload(run: dict) -> dict:
@@ -1069,27 +1067,28 @@ def judge_batch_payload(run: dict) -> dict:
             "id": rec["id"], "subcategory": rec.get("subcategory", ""),
             "prompt": rec.get("prompt", ""), "judges": rec.get("judges", {}),
         })
+    judges = run.get("judges") or sorted({judge_id for s in samples for judge_id in s.get("judges", {})})
     per_judge: dict[str, dict] = {}
-    for judge_id in run["judges"]:
+    for judge_id in judges:
         done = [s for s in samples if judge_id in s["judges"] and not s["judges"][judge_id].get("error")]
         unsafe = sum(1 for s in done if s["judges"][judge_id].get("unsafe") is True)
         per_judge[judge_id] = {"total": len(done), "unsafe": unsafe, "asr": round(unsafe / len(done), 4) if done else 0}
-    complete = [s for s in samples if all(judge_id in s["judges"] and not s["judges"][judge_id].get("error") for judge_id in run["judges"])]
-    agree = sum(1 for s in complete if len({s["judges"][judge_id].get("unsafe") for judge_id in run["judges"]}) == 1)
+    complete = [s for s in samples if all(judge_id in s["judges"] and not s["judges"][judge_id].get("error") for judge_id in judges)]
+    agree = sum(1 for s in complete if len({s["judges"][judge_id].get("unsafe") for judge_id in judges}) == 1)
     disagree = [
         {
             "id": s["id"], "subcategory": s.get("subcategory", ""),
             "prompt": s.get("prompt", ""),
             "judges": {
                 judge_id: {"unsafe": s["judges"][judge_id].get("unsafe"), "reason": s["judges"][judge_id].get("reason", "")}
-                for judge_id in run["judges"]
+                for judge_id in judges
             },
         }
-        for s in complete if len({s["judges"][judge_id].get("unsafe") for judge_id in run["judges"]}) > 1
+        for s in complete if len({s["judges"][judge_id].get("unsafe") for judge_id in judges}) > 1
     ]
     return {
-        "id": run["id"], "status": run["status"], "judges": run["judges"],
-        "done": run["done"], "total": len(run["samples"]),
+        "id": run["id"], "status": run["status"], "judges": judges,
+        "done": run["done"], "total": run["total"],
         "output_dir": str(run["out_dir"].relative_to(OUTPUT_ROOT)),
         "stats": {
             "per_judge": per_judge,
@@ -1104,21 +1103,7 @@ def judge_batch_payload(run: dict) -> dict:
 
 
 def judge_batch_from_disk(run_id: str) -> dict | None:
-    out_dir = OUTPUT_ROOT / "ui_judge" / run_id
-    if not (out_dir / "judgements.jsonl").exists():
-        return None
-    meta = read_json(out_dir / "meta.json")
-    samples = list(iter_jsonl(out_dir / "judgements.jsonl"))
-    judges: list[str] = []
-    for rec in samples:
-        judges.extend(rec.get("judges", {}).keys())
-    judges = list(dict.fromkeys(judges))
-    return {
-        "id": run_id, "status": "completed", "judges": judges, "done": len(samples),
-        "samples": samples, "out_dir": out_dir,
-        "img_dir": Path(meta.get("img_dir", str(out_dir / "imgs"))),
-        "cancelled": False,
-    }
+    return judge_run_snapshot(run_id)
 
 
 @app.get("/api/judge/datasets")
@@ -1142,23 +1127,58 @@ def judge_batch_start(request: JudgeBatchRequest) -> dict:
     run_id = f"judge-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:5]}"
     out_dir = OUTPUT_ROOT / "ui_judge" / run_id
     out_dir.mkdir(parents=True, exist_ok=False)
-    run = {
-        "id": run_id, "status": "running", "judges": list(dict.fromkeys(request.judges)),
-        "done": 0, "samples": samples, "out_dir": out_dir, "img_dir": img_dir,
-        "cancelled": False,
+    judges = list(dict.fromkeys(request.judges))
+    # 解析结果写盘（含全局 gen.jsonl 兜底），runner 只读这一份
+    samples_path = out_dir / "samples.jsonl"
+    with samples_path.open("w", encoding="utf-8") as stream:
+        for sample in samples:
+            stream.write(json.dumps(sample, ensure_ascii=False) + "\n")
+    (out_dir / "meta.json").write_text(
+        json.dumps({"judges": judges, "img_dir": str(img_dir), "total": len(samples)}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    log_path = out_dir / "run.log"
+    command = [
+        pipeline_python(), str(JUDGE_RUNNER_SCRIPT),
+        "--img-dir", str(img_dir), "--samples", str(samples_path),
+        "--judges", *judges, "--out", str(out_dir), "--limit", str(request.limit),
+    ]
+    with log_path.open("w", encoding="utf-8") as log_file:
+        log_file.write("# Judge batch task\n")
+        process = subprocess.Popen(
+            command, cwd=str(PROJECT_ROOT),
+            stdout=log_file, stderr=subprocess.STDOUT,
+            start_new_session=True,
+            env={**os.environ, "PYTHONPATH": "", "PYTHONUNBUFFERED": "1"},
+        )
+    JUDGE_RUNS[run_id] = {"process": process, "id": run_id}
+    return {
+        "accepted": True,
+        "message": f"裁判任务已启动（{len(samples)} 张 × {len(judges)} 个裁判）。",
+        "run": judge_batch_payload(judge_run_snapshot(run_id)),
     }
-    JUDGE_RUNS[run_id] = run
-    (out_dir / "meta.json").write_text(json.dumps({"dataset_id": request.dataset_id, "img_dir": str(img_dir)}, ensure_ascii=False), encoding="utf-8")
-    import threading
 
-    thread = threading.Thread(target=judge_worker, args=(run, local_env_values()), daemon=True)
-    thread.start()
-    return {"accepted": True, "message": f"裁判任务已启动（{len(samples)} 张 × {len(run['judges'])} 个裁判）。", "run": judge_batch_payload(run)}
+
+@app.get("/api/judge/runs")
+def judge_runs_list() -> dict:
+    """列出最近裁判任务（快照统一），供前端刷新后恢复。"""
+    disk_root = OUTPUT_ROOT / "ui_judge"
+    runs: list[dict] = []
+    if disk_root.is_dir():
+        for out_dir in sorted(disk_root.glob("judge-*"), reverse=True):
+            snapshot = judge_run_snapshot(out_dir.name)
+            if snapshot is not None:
+                runs.append({
+                    "id": snapshot["id"], "status": snapshot["status"],
+                    "done": snapshot["done"], "total": snapshot["total"],
+                    "judges": snapshot["judges"],
+                })
+    return {"found": True, "runs": runs}
 
 
 @app.get("/api/judge/runs/{run_id}")
 def judge_batch_status(run_id: str) -> dict:
-    run = JUDGE_RUNS.get(run_id) or judge_batch_from_disk(run_id)
+    run = judge_run_snapshot(run_id)
     if run is None:
         return {"found": False, "message": "裁判任务不存在。"}
     return {"found": True, "run": judge_batch_payload(run)}

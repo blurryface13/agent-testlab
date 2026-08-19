@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
-import { CategoriesResponse, CategoryNode, ConfigOptions, Dashboard, Dataset, GenerationOptions, GenerationRun, JudgeRun, PolishOptions, PolishRun, PolishSample, PreviewResult, PromptView, ProviderResponse, QuotaSnapshot, T2IJudgeResult, T2IRun, judgeT2I, loadCategories, loadConfigOptions, loadDashboard, loadGenerationOptions, loadGenerationRun, loadJudgeDatasets, loadJudgeRun, loadPolishOptions, loadPolishRun, loadPrompts, loadProviders, loadQuota, loadT2IRun, previewRun, startGeneration, startJudgeBatch, startPolish, startT2IGenerate } from "./api";
+import { CategoriesResponse, CategoryNode, ConfigOptions, Dashboard, Dataset, GenerationOptions, GenerationRun, JudgeRun, PolishOptions, PolishRun, PolishSample, PreviewResult, PromptView, ProviderResponse, QuotaSnapshot, T2IJudgeResult, T2IRun, judgeT2I, loadCategories, loadConfigOptions, loadDashboard, loadGenerationOptions, loadGenerationRun, loadJudgeDatasets, loadJudgeRun, loadJudgeRuns, loadPolishOptions, loadPolishRun, loadPrompts, loadProviders, loadQuota, loadT2IRun, previewRun, startGeneration, startJudgeBatch, startPolish, startT2IGenerate } from "./api";
 import { Icon, IconName } from "./icons";
 
 const navItems: Array<[string, IconName]> = [["概览", "overview"], ["数据集", "dataset"], ["生成数据集", "generate"], ["图像实验", "image"], ["裁判分析", "analysis"], ["Polish", "polish"], ["运行任务", "runs"], ["结果分析", "analysis"], ["日志", "log"]];
@@ -454,7 +454,27 @@ function JudgeAnalysisPage({ datasets, options, onBack }: { datasets: Dataset[];
       setJudgeDatasets(list);
       if (list.length) setDatasetId((current) => current || list[0].id);
     }).catch((reason) => setError(reason instanceof Error ? reason.message : "图像数据集读取失败"));
+    const saved = localStorage.getItem("judgeRunId");
+    if (saved) {
+      loadJudgeRun(saved).then(setRun).catch(() => restoreRunning());
+    } else {
+      restoreRunning();
+    }
   }, []);
+
+  const restoreRunning = async () => {
+    try {
+      const runs = await loadJudgeRuns();
+      const running = runs.find((item) => item.status === "running");
+      if (running) {
+        const run = await loadJudgeRun(running.id);
+        setRun(run);
+        localStorage.setItem("judgeRunId", run.id);
+      }
+    } catch {
+      // 无运行中任务时静默
+    }
+  };
 
   useEffect(() => {
     if (!run || run.status !== "running") return;
@@ -476,6 +496,7 @@ function JudgeAnalysisPage({ datasets, options, onBack }: { datasets: Dataset[];
       const result = await startJudgeBatch({ dataset_id: datasetId, judges, limit });
       if (!result.accepted || !result.run) throw new Error(result.message);
       setRun(result.run);
+      localStorage.setItem("judgeRunId", result.run.id);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "裁判任务未启动");
     } finally {
@@ -568,6 +589,11 @@ function T2IExperimentPage({ datasets, options, onBack }: { datasets: Dataset[];
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
+  useEffect(() => {
+    const saved = localStorage.getItem("t2iRunId");
+    if (saved) loadT2IRun(saved).then(setRun).catch(() => undefined);
+  }, []);
+
   const datasetCategories = datasets.find((dataset) => dataset.id === datasetId)?.categories || {};
   const subcats = Object.keys(datasetCategories);
 
@@ -588,6 +614,7 @@ function T2IExperimentPage({ datasets, options, onBack }: { datasets: Dataset[];
       const result = await startT2IGenerate({ dataset_id: datasetId, model, subcategory: subcategory || undefined, limit });
       if (!result.accepted || !result.run) throw new Error(result.message);
       setRun(result.run);
+      localStorage.setItem("t2iRunId", result.run.id);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "生图任务未启动");
     } finally {
