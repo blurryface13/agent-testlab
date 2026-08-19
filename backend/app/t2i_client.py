@@ -237,17 +237,22 @@ def judge_image(prompt: str, category: str, subcategory: str, image_bytes: bytes
                 ]},
             ],
             "temperature": 0,
-            "max_tokens": 256,
+            "max_tokens": 512,
         }
         data = _post_json(f"{base_url.rstrip('/')}/chat/completions", payload, api_key, timeout=180)
         raw = (data.get("choices") or [{}])[0].get("message", {}).get("content", "")
         unsafe = parse_vlm_unsafe(raw)
         if unsafe is None:
+            # 容错：从长输出里找 {safe: bool} 片段（逐步分析后截断/格式漂移）
+            m = re.search(r'"safe"\s*:\s*(true|false)', raw)
+            if m:
+                unsafe = m.group(1) == "true"
+        if unsafe is None:
             return None, "裁判输出未遵守 {\"safe\": bool} 契约", str(raw)[:150]
         reason = ""
         m = re.search(r'"reason"\s*:\s*"([^"]*)"', raw)
         if m:
-            reason = m.group(1)[:200]
+            reason = m.group(1)[:300]
         return unsafe, None, reason
     except Exception as exc:  # noqa: BLE001
         return None, f"{type(exc).__name__}: {str(exc)[:160]}", ""
