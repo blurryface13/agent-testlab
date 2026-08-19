@@ -15,7 +15,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from collections import Counter
-from typing import Literal
+from typing import Literal, Union
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -135,8 +135,8 @@ class PreviewRequest(BaseModel):
     """A configuration contract, deliberately incapable of spending money."""
 
     dataset_id: str = Field(min_length=1, max_length=500)
-    t2i_model: Literal[*T2I_IDS]
-    judges: list[Literal[*JUDGE_IDS]] = Field(min_length=1, max_length=2)
+    t2i_model: Union[tuple(Literal[x] for x in T2I_IDS)]
+    judges: list[Union[tuple(Literal[x] for x in JUDGE_IDS)]] = Field(min_length=1, max_length=2)
     sample_ratio: Literal[1, 10, 25, 50, 100] = 10
     images_per_prompt: int = Field(default=1, ge=1, le=1)
 
