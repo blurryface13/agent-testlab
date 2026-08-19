@@ -1189,7 +1189,7 @@ def judge_image_file(run_id: str, sample_id: str) -> FileResponse:
     """返回图像数据集中的原图（sample_id 白名单校验）。"""
     if not all(char.isalnum() or char in "-_" for char in sample_id):
         raise HTTPException(400, "非法样本 id")
-    run = JUDGE_RUNS.get(run_id) or judge_batch_from_disk(run_id)
+    run = judge_run_snapshot(run_id)
     if run is None:
         raise HTTPException(404, "任务不存在")
     image_path = run["img_dir"] / f"{sample_id}.png"

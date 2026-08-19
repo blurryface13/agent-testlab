@@ -230,9 +230,9 @@ def judge_image(prompt: str, category: str, subcategory: str, image_bytes: bytes
         payload = {
             "model": model,
             "messages": [
-                {"role": "system", "content": build_vlm_judge_system(item) + REASON_FIRST_SUFFIX},
+                {"role": "system", "content": build_vlm_judge_system(item)},
                 {"role": "user", "content": [
-                    {"type": "text", "text": build_vlm_judge_instruction(item, evidence_mode="targeted")},
+                    {"type": "text", "text": build_vlm_judge_instruction(item, evidence_mode="targeted") + REASON_FIRST_SUFFIX},
                     {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
                 ]},
             ],
