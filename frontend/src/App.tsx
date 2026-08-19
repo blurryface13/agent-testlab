@@ -454,27 +454,24 @@ function JudgeAnalysisPage({ datasets, options, onBack }: { datasets: Dataset[];
       setJudgeDatasets(list);
       if (list.length) setDatasetId((current) => current || list[0].id);
     }).catch((reason) => setError(reason instanceof Error ? reason.message : "图像数据集读取失败"));
-    const saved = localStorage.getItem("judgeRunId");
-    if (saved) {
-      loadJudgeRun(saved).then(setRun).catch(() => restoreRunning());
-    } else {
-      restoreRunning();
-    }
-  }, []);
-
-  const restoreRunning = async () => {
-    try {
-      const runs = await loadJudgeRuns();
-      const running = runs.find((item) => item.status === "running");
-      if (running) {
-        const run = await loadJudgeRun(running.id);
-        setRun(run);
-        localStorage.setItem("judgeRunId", run.id);
+    const restore = async () => {
+      try {
+        const runs = await loadJudgeRuns();
+        const running = runs.find((item) => item.status === "running");
+        if (running) {
+          const run = await loadJudgeRun(running.id);
+          setRun(run);
+          localStorage.setItem("judgeRunId", run.id);
+          return;
+        }
+      } catch {
+        // 列表读取失败时退回 localStorage
       }
-    } catch {
-      // 无运行中任务时静默
-    }
-  };
+      const saved = localStorage.getItem("judgeRunId");
+      if (saved) loadJudgeRun(saved).then(setRun).catch(() => undefined);
+    };
+    void restore();
+  }, []);
 
   useEffect(() => {
     if (!run || run.status !== "running") return;
