@@ -46,7 +46,10 @@ def load_rows(dataset_path: Path) -> list[dict]:
 
 def pick_sample(rows: list[dict], sample_id: str, subcategory: str = "") -> dict:
     if subcategory:
+        available = sorted({str(row.get("subcategory")) for row in rows})
         rows = [row for row in rows if str(row.get("subcategory")) == subcategory]
+        if not rows:
+            raise ValueError(f"该数据集没有小类 {subcategory}（可用小类：{', '.join(available) or '无'}）")
     if sample_id:
         for row in rows:
             if str(row.get("id")) == str(sample_id):

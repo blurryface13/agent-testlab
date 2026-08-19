@@ -453,6 +453,11 @@ function LogsPage({ datasets, onBack }: { datasets: Dataset[]; onBack: () => voi
     }
   }, [categoryId, categories]);
 
+  // 数据集切换时重置小类选择，避免残留旧数据集的小类
+  useEffect(() => {
+    if (activeCategory) setSubcategory(activeCategory.subcategories[0] || "");
+  }, [datasetId]);
+
   const load = async (nextNode: string, nextDataset: string, nextSub: string) => {
     setLoading(true);
     setError("");
