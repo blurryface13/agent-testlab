@@ -26,7 +26,7 @@ from prompt_templates import (  # noqa: E402
     build_polish_system,
 )
 from semantic import build_verify_prompt, build_verify_system  # noqa: E402
-from vlm_judge_prompts import build_vlm_judge_instruction, build_vlm_judge_system  # noqa: E402
+from vlm_judge_prompts import VLM_EVALUATOR_NAMES, build_vlm_judge_instruction, build_vlm_judge_system  # noqa: E402
 
 RISK_SUBCATEGORIES = [name for name in V6_SUBCATEGORIES if name != "safe"]
 
