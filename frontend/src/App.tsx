@@ -485,26 +485,26 @@ function LogsPage({ datasets, onBack }: { datasets: Dataset[]; onBack: () => voi
             {datasets.map((dataset) => <option key={dataset.id} value={dataset.id}>{dataset.name} · {dataset.count} 条</option>)}
           </select>
         </label>
+        <label className="log-dataset">大类
+          <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
+            {categories.map((item) => <option key={item.id} value={item.id}>{item.id} · {item.name}</option>)}
+          </select>
+        </label>
+        <label className="log-dataset">小类
+          <select value={subcategory} onChange={(event) => setSubcategory(event.target.value)}>
+            {(activeCategory?.subcategories || []).map((sub) => <option key={sub} value={sub}>{sub}</option>)}
+          </select>
+        </label>
         <button className="secondary" onClick={() => void load(node, datasetId, subcategory)} disabled={loading}><Icon name="refresh" />{loading ? "还原中…" : "还原"}</button>
       </div>
       {error && <p className="inline-error">{error}</p>}
-      <div className="log-layout">
-        <aside className="log-category-col">
-          <p className="log-col-title">大类</p>
-          {categories.map((item) => <button key={item.id} className={categoryId === item.id ? "log-cat active" : "log-cat"} onClick={() => setCategoryId(item.id)}><b>{item.id}</b><span>{item.name}</span></button>)}
-        </aside>
-        <aside className="log-subcategory-col">
-          <p className="log-col-title">小类（{activeCategory?.subcategories.length ?? 0}）</p>
-          {(activeCategory?.subcategories || []).map((sub) => <button key={sub} className={subcategory === sub ? "log-subcat active" : "log-subcat"} onClick={() => setSubcategory(sub)}>{sub}</button>)}
-        </aside>
-        <div className="log-preview">
+      <div className="log-preview">
           {view ? <>
             <div className="log-meta"><span>样本 <b>{view.sample_id}</b></span><span>小类 <b>{view.subcategory}</b></span>{view.category ? <span>大类 <b>{view.category}</b></span> : null}{view.note ? <span className="log-note">{view.note}</span> : null}</div>
             <div className="log-block"><div className="log-block-head"><b>SYSTEM</b><span>{view.system?.length ?? 0} 字符</span></div><pre>{view.system}</pre></div>
             <div className="log-block"><div className="log-block-head"><b>USER</b><span>{view.user?.length ?? 0} 字符</span></div><pre>{view.user}</pre></div>
           </> : <p className="panel-description">{loading ? "还原中…" : "选择大类与小类查看完整提示词"}</p>}
         </div>
-      </div>
     </section>
   </>;
 }
