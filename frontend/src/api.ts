@@ -249,6 +249,38 @@ export async function judgeT2I(payload: { run_id: string; model: string; sample_
   return await response.json() as T2IJudgeResponse;
 }
 
+export type JudgeDataset = { id: string; name: string; count: number; path: string };
+export type JudgeVerdict = { unsafe: boolean | null; reason?: string; error?: string };
+export type JudgeSample = { id: string; subcategory?: string; prompt?: string; judges: Record<string, JudgeVerdict> };
+export type JudgeStats = { per_judge: Record<string, { total: number; unsafe: number; asr: number }>; complete: number; agree: number; agree_rate: number; disagree_count: number };
+export type JudgeRun = { id: string; status: "running" | "completed"; judges: string[]; done: number; total: number; output_dir: string; stats: JudgeStats; samples: JudgeSample[]; disagree: JudgeSample[] };
+export type JudgeStartResult = { accepted: boolean; message: string; run?: JudgeRun };
+
+export async function loadJudgeDatasets(): Promise<JudgeDataset[]> {
+  const response = await fetch("/api/judge/datasets");
+  if (!response.ok) throw new Error("图像数据集读取失败");
+  const payload = await response.json() as { found: boolean; datasets: JudgeDataset[] };
+  return payload.datasets || [];
+}
+
+export async function startJudgeBatch(payload: { dataset_id: string; judges: string[]; limit: number }): Promise<JudgeStartResult> {
+  const response = await fetch("/api/judge/start", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error("裁判任务提交失败");
+  return await response.json() as JudgeStartResult;
+}
+
+export async function loadJudgeRun(runId: string): Promise<JudgeRun> {
+  const response = await fetch(`/api/judge/runs/${encodeURIComponent(runId)}`);
+  if (!response.ok) throw new Error("裁判任务状态读取失败");
+  const payload = await response.json() as { found: boolean; run?: JudgeRun; message?: string };
+  if (!payload.found || !payload.run) throw new Error(payload.message || "裁判任务不存在");
+  return payload.run;
+}
+
 export async function loadQuota(): Promise<QuotaSnapshot> {
   const response = await fetch("/api/quota/refresh");
   if (!response.ok) throw new Error("额度查询服务不可用");

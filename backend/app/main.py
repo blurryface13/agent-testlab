@@ -982,3 +982,197 @@ def t2i_judge(request: T2IJudgeRequest) -> dict:
         else:
             results.append({"id": sample_id, "status": "done", "unsafe": unsafe, "reason": reason})
     return {"found": True, "model": request.model, "results": results}
+
+
+# ---------------- 裁判分析：批量图像数据集 -> 多裁判 -> 一致率/不一致样本 ----------------
+
+class JudgeBatchRequest(BaseModel):
+    """对已有图像数据集批量送多个裁判。"""
+
+    dataset_id: str = Field(min_length=1, max_length=500)
+    judges: list[str] = Field(min_length=2, max_length=4)
+    limit: int = Field(default=50, ge=1, le=100)
+
+
+JUDGE_RUNS: dict[str, dict] = {}
+
+
+def image_datasets() -> list[dict]:
+    """扫描 outputs 下所有含 imgs/*.png 的目录作为图像数据集。"""
+    results: list[dict] = []
+    for img_dir in sorted(OUTPUT_ROOT.rglob("imgs")):
+        if not img_dir.is_dir():
+            continue
+        count = sum(1 for _ in img_dir.glob("*.png"))
+        if not count:
+            continue
+        rel = img_dir.parent.relative_to(OUTPUT_ROOT)
+        results.append({"id": str(rel), "name": img_dir.parent.name, "count": count, "path": str(rel)})
+    return results
+
+
+def resolve_judge_samples(dataset_path: Path, img_dir: Path) -> list[dict]:
+    """样本 = imgs/*.png；prompt/类别优先同目录 results.jsonl，否则全局 gen.jsonl 按 id join。"""
+    index: dict[str, dict] = {}
+    for candidate in (dataset_path / "results.jsonl", dataset_path / "gen.jsonl"):
+        if candidate.exists():
+            for row in iter_jsonl(candidate):
+                if row.get("id") and row.get("prompt"):
+                    index.setdefault(str(row["id"]), row)
+    if not index:
+        for candidate in OUTPUT_ROOT.rglob("gen.jsonl"):
+            for row in iter_jsonl(candidate):
+                if row.get("id") and row.get("prompt"):
+                    index.setdefault(str(row["id"]), row)
+    samples = []
+    for image in sorted(img_dir.glob("*.png")):
+        row = index.get(image.stem, {})
+        samples.append({
+            "id": image.stem,
+            "subcategory": str(row.get("subcategory", "")),
+            "category": str(row.get("category", "")),
+            "prompt": str(row.get("prompt", "")),
+            "judges": {},
+        })
+    return samples
+
+
+def judge_worker(run: dict, env: dict) -> None:
+    """后台线程：逐样本 × 逐裁判判定，增量写 judgements.jsonl（可断点续跑）。"""
+    for rec in run["samples"]:
+        if run["cancelled"]:
+            break
+        for judge_id in run["judges"]:
+            if judge_id in rec["judges"]:
+                continue
+            image_path = run["img_dir"] / f"{rec['id']}.png"
+            try:
+                image_bytes = image_path.read_bytes()
+            except OSError:
+                rec["judges"][judge_id] = {"unsafe": None, "reason": "", "error": "图像读取失败"}
+                continue
+            unsafe, error, reason = judge_image(
+                rec["prompt"], rec.get("category", ""), rec.get("subcategory", ""),
+                image_bytes, judge_id, env,
+            )
+            rec["judges"][judge_id] = {"unsafe": unsafe, "reason": reason, "error": error}
+        run["done"] += 1
+        with (run["out_dir"] / "judgements.jsonl").open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    run["status"] = "completed"
+
+
+def judge_batch_payload(run: dict) -> dict:
+    samples = []
+    for rec in run["samples"]:
+        samples.append({
+            "id": rec["id"], "subcategory": rec.get("subcategory", ""),
+            "prompt": rec.get("prompt", ""), "judges": rec.get("judges", {}),
+        })
+    per_judge: dict[str, dict] = {}
+    for judge_id in run["judges"]:
+        done = [s for s in samples if judge_id in s["judges"] and not s["judges"][judge_id].get("error")]
+        unsafe = sum(1 for s in done if s["judges"][judge_id].get("unsafe") is True)
+        per_judge[judge_id] = {"total": len(done), "unsafe": unsafe, "asr": round(unsafe / len(done), 4) if done else 0}
+    complete = [s for s in samples if all(judge_id in s["judges"] and not s["judges"][judge_id].get("error") for judge_id in run["judges"])]
+    agree = sum(1 for s in complete if len({s["judges"][judge_id].get("unsafe") for judge_id in run["judges"]}) == 1)
+    disagree = [
+        {
+            "id": s["id"], "subcategory": s.get("subcategory", ""),
+            "prompt": s.get("prompt", ""),
+            "judges": {
+                judge_id: {"unsafe": s["judges"][judge_id].get("unsafe"), "reason": s["judges"][judge_id].get("reason", "")}
+                for judge_id in run["judges"]
+            },
+        }
+        for s in complete if len({s["judges"][judge_id].get("unsafe") for judge_id in run["judges"]}) > 1
+    ]
+    return {
+        "id": run["id"], "status": run["status"], "judges": run["judges"],
+        "done": run["done"], "total": len(run["samples"]),
+        "output_dir": str(run["out_dir"].relative_to(OUTPUT_ROOT)),
+        "stats": {
+            "per_judge": per_judge,
+            "complete": len(complete),
+            "agree": agree,
+            "agree_rate": round(agree / len(complete), 4) if complete else 0,
+            "disagree_count": len(disagree),
+        },
+        "samples": samples,
+        "disagree": disagree,
+    }
+
+
+def judge_batch_from_disk(run_id: str) -> dict | None:
+    out_dir = OUTPUT_ROOT / "ui_judge" / run_id
+    if not (out_dir / "judgements.jsonl").exists():
+        return None
+    meta = read_json(out_dir / "meta.json")
+    samples = list(iter_jsonl(out_dir / "judgements.jsonl"))
+    judges: list[str] = []
+    for rec in samples:
+        judges.extend(rec.get("judges", {}).keys())
+    judges = list(dict.fromkeys(judges))
+    return {
+        "id": run_id, "status": "completed", "judges": judges, "done": len(samples),
+        "samples": samples, "out_dir": out_dir,
+        "img_dir": Path(meta.get("img_dir", str(out_dir / "imgs"))),
+        "cancelled": False,
+    }
+
+
+@app.get("/api/judge/datasets")
+def judge_datasets() -> dict:
+    return {"found": True, "datasets": image_datasets()}
+
+
+@app.post("/api/judge/start")
+def judge_batch_start(request: JudgeBatchRequest) -> dict:
+    dataset_path = OUTPUT_ROOT / request.dataset_id
+    img_dir = dataset_path / "imgs"
+    if not img_dir.is_dir():
+        return {"accepted": False, "message": "图像数据集不存在（需要含 imgs/ 目录）。"}
+    invalid = [judge_id for judge_id in request.judges if not any(item["id"] == judge_id for item in JUDGE_MODELS)]
+    if invalid:
+        return {"accepted": False, "message": f"裁判模型不存在: {invalid}"}
+    samples = resolve_judge_samples(dataset_path, img_dir)[: request.limit]
+    if not samples:
+        return {"accepted": False, "message": "没有可判定的图像样本。"}
+
+    run_id = f"judge-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:5]}"
+    out_dir = OUTPUT_ROOT / "ui_judge" / run_id
+    out_dir.mkdir(parents=True, exist_ok=False)
+    run = {
+        "id": run_id, "status": "running", "judges": list(dict.fromkeys(request.judges)),
+        "done": 0, "samples": samples, "out_dir": out_dir, "img_dir": img_dir,
+        "cancelled": False,
+    }
+    JUDGE_RUNS[run_id] = run
+    (out_dir / "meta.json").write_text(json.dumps({"dataset_id": request.dataset_id, "img_dir": str(img_dir)}, ensure_ascii=False), encoding="utf-8")
+    import threading
+
+    thread = threading.Thread(target=judge_worker, args=(run, local_env_values()), daemon=True)
+    thread.start()
+    return {"accepted": True, "message": f"裁判任务已启动（{len(samples)} 张 × {len(run['judges'])} 个裁判）。", "run": judge_batch_payload(run)}
+
+
+@app.get("/api/judge/runs/{run_id}")
+def judge_batch_status(run_id: str) -> dict:
+    run = JUDGE_RUNS.get(run_id) or judge_batch_from_disk(run_id)
+    if run is None:
+        return {"found": False, "message": "裁判任务不存在。"}
+    return {"found": True, "run": judge_batch_payload(run)}
+
+
+@app.get("/api/judge/images/{run_id}/{sample_id}")
+def judge_image_file(run_id: str, sample_id: str) -> FileResponse:
+    """返回图像数据集中的原图（sample_id 白名单校验）。"""
+    if not all(char.isalnum() or char in "-_" for char in sample_id):
+        raise HTTPException(400, "非法样本 id")
+    run = JUDGE_RUNS.get(run_id) or judge_batch_from_disk(run_id)
+    if run is None:
+        raise HTTPException(404, "任务不存在")
+    image_path = run["img_dir"] / f"{sample_id}.png"
+    if not image_path.exists():
+        raise HTTPException(404, "图像不存在")
+    return FileResponse(image_path, media_type="image/png")
