@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
-import { ConfigOptions, Dashboard, Dataset, GenerationOptions, GenerationRun, PolishOptions, PolishRun, PolishSample, PreviewResult, PromptView, ProviderResponse, QuotaSnapshot, loadConfigOptions, loadDashboard, loadGenerationOptions, loadGenerationRun, loadPolishOptions, loadPolishRun, loadPrompts, loadProviders, loadQuota, previewRun, startGeneration, startPolish } from "./api";
+import { CategoriesResponse, CategoryNode, ConfigOptions, Dashboard, Dataset, GenerationOptions, GenerationRun, PolishOptions, PolishRun, PolishSample, PreviewResult, PromptView, ProviderResponse, QuotaSnapshot, loadCategories, loadConfigOptions, loadDashboard, loadGenerationOptions, loadGenerationRun, loadPolishOptions, loadPolishRun, loadPrompts, loadProviders, loadQuota, previewRun, startGeneration, startPolish } from "./api";
 import { Icon, IconName } from "./icons";
 
 const navItems: Array<[string, IconName]> = [["概览", "overview"], ["数据集", "dataset"], ["生成数据集", "generate"], ["Polish", "polish"], ["运行任务", "runs"], ["结果分析", "analysis"], ["日志", "log"]];
@@ -430,15 +430,34 @@ function LogsPage({ datasets, onBack }: { datasets: Dataset[]; onBack: () => voi
   const nodeLabels: Array<[string, string]> = [["judge", "裁判"], ["generate", "生成"], ["polish", "Polish"], ["label", "标签"], ["verify", "校验"]];
   const [node, setNode] = useState("judge");
   const [datasetId, setDatasetId] = useState(datasets[0]?.id || "");
+  const [categories, setCategories] = useState<CategoryNode[]>([]);
+  const [categoryId, setCategoryId] = useState("A.1");
+  const [subcategory, setSubcategory] = useState("");
   const [view, setView] = useState<PromptView | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const load = async (nextNode: string, nextDataset: string) => {
+  useEffect(() => {
+    loadCategories().then((response) => {
+      if (response.found && response.categories.length) {
+        setCategories(response.categories);
+        if (!response.categories.some((item) => item.id === categoryId)) setCategoryId(response.categories[0].id);
+      }
+    }).catch(() => setError("类别映射读取失败"));
+  }, []);
+
+  const activeCategory = categories.find((item) => item.id === categoryId);
+  useEffect(() => {
+    if (activeCategory && !activeCategory.subcategories.includes(subcategory)) {
+      setSubcategory(activeCategory.subcategories[0] || "");
+    }
+  }, [categoryId, categories]);
+
+  const load = async (nextNode: string, nextDataset: string, nextSub: string) => {
     setLoading(true);
     setError("");
     try {
-      const result = await loadPrompts(nextNode, nextDataset || undefined);
+      const result = await loadPrompts(nextNode, nextDataset || undefined, nextSub || undefined);
       if (!result.found) throw new Error(result.message || "无结果");
       setView(result);
     } catch (reason) {
@@ -449,7 +468,9 @@ function LogsPage({ datasets, onBack }: { datasets: Dataset[]; onBack: () => voi
     }
   };
 
-  useEffect(() => { void load(node, datasetId); }, []);
+  useEffect(() => {
+    if (subcategory) void load(node, datasetId, subcategory);
+  }, [node, datasetId, subcategory]);
 
   return <>
     <section className="composer-heading">
@@ -458,20 +479,32 @@ function LogsPage({ datasets, onBack }: { datasets: Dataset[]; onBack: () => voi
     </section>
     <section className="panel log-panel">
       <div className="log-toolbar">
-        <div className="log-tabs">{nodeLabels.map(([id, label]) => <button key={id} className={node === id ? "log-tab active" : "log-tab"} onClick={() => { setNode(id); void load(id, datasetId); }}>{label}</button>)}</div>
+        <div className="log-tabs">{nodeLabels.map(([id, label]) => <button key={id} className={node === id ? "log-tab active" : "log-tab"} onClick={() => setNode(id)}>{label}</button>)}</div>
         <label className="log-dataset">数据集
-          <select value={datasetId} onChange={(event) => { setDatasetId(event.target.value); void load(node, event.target.value); }}>
+          <select value={datasetId} onChange={(event) => setDatasetId(event.target.value)}>
             {datasets.map((dataset) => <option key={dataset.id} value={dataset.id}>{dataset.name} · {dataset.count} 条</option>)}
           </select>
         </label>
-        <button className="secondary" onClick={() => void load(node, datasetId)} disabled={loading}><Icon name="refresh" />{loading ? "还原中…" : "还原"}</button>
+        <button className="secondary" onClick={() => void load(node, datasetId, subcategory)} disabled={loading}><Icon name="refresh" />{loading ? "还原中…" : "还原"}</button>
       </div>
       {error && <p className="inline-error">{error}</p>}
-      {view && <div className="log-body">
-        <div className="log-meta"><span>样本 <b>{view.sample_id}</b></span><span>小类 <b>{view.subcategory}</b></span>{view.category ? <span>大类 <b>{view.category}</b></span> : null}{view.note ? <span className="log-note">{view.note}</span> : null}</div>
-        <div className="log-block"><div className="log-block-head"><b>SYSTEM</b><span>{view.system?.length ?? 0} 字符</span></div><pre>{view.system}</pre></div>
-        <div className="log-block"><div className="log-block-head"><b>USER</b><span>{view.user?.length ?? 0} 字符</span></div><pre>{view.user}</pre></div>
-      </div>}
+      <div className="log-layout">
+        <aside className="log-category-col">
+          <p className="log-col-title">大类</p>
+          {categories.map((item) => <button key={item.id} className={categoryId === item.id ? "log-cat active" : "log-cat"} onClick={() => setCategoryId(item.id)}><b>{item.id}</b><span>{item.name}</span></button>)}
+        </aside>
+        <aside className="log-subcategory-col">
+          <p className="log-col-title">小类（{activeCategory?.subcategories.length ?? 0}）</p>
+          {(activeCategory?.subcategories || []).map((sub) => <button key={sub} className={subcategory === sub ? "log-subcat active" : "log-subcat"} onClick={() => setSubcategory(sub)}>{sub}</button>)}
+        </aside>
+        <div className="log-preview">
+          {view ? <>
+            <div className="log-meta"><span>样本 <b>{view.sample_id}</b></span><span>小类 <b>{view.subcategory}</b></span>{view.category ? <span>大类 <b>{view.category}</b></span> : null}{view.note ? <span className="log-note">{view.note}</span> : null}</div>
+            <div className="log-block"><div className="log-block-head"><b>SYSTEM</b><span>{view.system?.length ?? 0} 字符</span></div><pre>{view.system}</pre></div>
+            <div className="log-block"><div className="log-block-head"><b>USER</b><span>{view.user?.length ?? 0} 字符</span></div><pre>{view.user}</pre></div>
+          </> : <p className="panel-description">{loading ? "还原中…" : "选择大类与小类查看完整提示词"}</p>}
+        </div>
+      </div>
     </section>
   </>;
 }

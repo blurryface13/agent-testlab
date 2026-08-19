@@ -197,9 +197,19 @@ export type PromptView = {
   message?: string;
 };
 
-export async function loadPrompts(node: string, datasetId?: string): Promise<PromptView> {
+export type CategoryNode = { id: string; name: string; subcategories: string[] };
+export type CategoriesResponse = { found: boolean; categories: CategoryNode[]; message?: string };
+
+export async function loadCategories(): Promise<CategoriesResponse> {
+  const response = await fetch("/api/logs/categories");
+  if (!response.ok) throw new Error("类别映射服务不可用");
+  return await response.json() as CategoriesResponse;
+}
+
+export async function loadPrompts(node: string, datasetId?: string, subcategory?: string): Promise<PromptView> {
   const query = new URLSearchParams({ node });
   if (datasetId) query.set("dataset_id", datasetId);
+  if (subcategory) query.set("subcategory", subcategory);
   const response = await fetch(`/api/logs/prompts?${query.toString()}`);
   if (!response.ok) throw new Error("提示词还原服务不可用");
   return await response.json() as PromptView;

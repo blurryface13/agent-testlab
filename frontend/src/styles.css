@@ -39,3 +39,18 @@ button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible
 .log-block-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-bottom: 1px solid #edf1f6; color: #4a7fe8; font-size: 11px; letter-spacing: .08em; }
 .log-block-head span { color: #9aa4b4; font-weight: 600; letter-spacing: 0; }
 .log-block pre { margin: 0; padding: 14px; font: 12px/1.65 ui-monospace, SFMono-Regular, Menlo, monospace; color: #3d4a61; white-space: pre-wrap; word-break: break-word; max-height: 420px; overflow: auto; }
+
+/* 日志页：大类/小类联动三栏 */
+.log-layout { margin-top: 18px; display: grid; grid-template-columns: 210px 170px minmax(0, 1fr); gap: 16px; align-items: start; }
+.log-category-col, .log-subcategory-col { border: 1px solid #e3e8f0; border-radius: 8px; background: #fafcff; padding: 10px; max-height: 560px; overflow: auto; display: grid; gap: 4px; }
+.log-col-title { margin: 2px 6px 8px; color: #98a2b2; font-size: 10px; font-weight: 720; letter-spacing: .09em; }
+.log-cat, .log-subcat { border: 0; border-radius: 6px; background: transparent; text-align: left; padding: 8px 10px; cursor: pointer; }
+.log-cat { display: grid; gap: 2px; }
+.log-cat b { color: #39455a; font-size: 12px; }
+.log-cat span { color: #8c98aa; font-size: 10px; line-height: 1.35; }
+.log-cat:hover, .log-subcat:hover { background: #f0f4fb; }
+.log-cat.active { background: #e9f1ff; }
+.log-cat.active b, .log-cat.active span { color: #276cf1; }
+.log-subcat { color: #5d6a7e; font-size: 12px; font-weight: 620; }
+.log-subcat.active { background: #e9f1ff; color: #276cf1; font-weight: 690; }
+.log-preview { min-width: 0; display: grid; gap: 14px; }

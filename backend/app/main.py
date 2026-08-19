@@ -649,8 +649,23 @@ def get_polish_run(run_id: str) -> dict:
 PROMPT_RENDER_SCRIPT = PROJECT_ROOT / "backend" / "app" / "prompt_render.py"
 
 
+@app.get("/api/logs/categories")
+def log_categories() -> dict:
+    """大类 -> 小类映射（日志页联动选择用）。"""
+    command = [pipeline_python(), str(PROMPT_RENDER_SCRIPT), "--list-categories", "--dataset", "unused"]
+    try:
+        proc = subprocess.run(
+            command, capture_output=True, text=True, timeout=60,
+            cwd=str(PIPELINE_ROOT),
+            env={**os.environ, "PYTHONPATH": "", "PYTHONUNBUFFERED": "1"},
+        )
+        return json.loads(proc.stdout)
+    except (subprocess.SubprocessError, json.JSONDecodeError) as exc:
+        return {"found": False, "message": f"类别映射读取失败：{type(exc).__name__}"}
+
+
 @app.get("/api/logs/prompts")
-def log_prompts(node: str = "judge", dataset_id: str = "", sample_id: str = "") -> dict:
+def log_prompts(node: str = "judge", dataset_id: str = "", sample_id: str = "", subcategory: str = "") -> dict:
     """还原指定节点 LLM 收到的完整提示词（system + user）。只读，不触发任何模型调用。"""
     if node not in {"judge", "generate", "polish", "label", "verify"}:
         return {"found": False, "message": f"未知节点 {node}"}
@@ -666,6 +681,8 @@ def log_prompts(node: str = "judge", dataset_id: str = "", sample_id: str = "") 
     ]
     if sample_id:
         command += ["--sample-id", sample_id]
+    if subcategory:
+        command += ["--subcategory", subcategory]
     try:
         proc = subprocess.run(
             command, capture_output=True, text=True, timeout=90,

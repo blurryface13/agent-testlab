@@ -24,7 +24,7 @@ from prompt_templates import (  # noqa: E402
     build_polish_request,
 )
 from semantic import VERIFY_SYSTEM, build_verify_prompt  # noqa: E402
-from vlm_judge_prompts import VLM_JUDGE_SYSTEM, build_vlm_judge_instruction  # noqa: E402
+from vlm_judge_prompts import VLM_EVALUATOR_NAMES, VLM_JUDGE_SYSTEM, build_vlm_judge_instruction  # noqa: E402
 
 RISK_SUBCATEGORIES = [name for name in V6_SUBCATEGORIES if name != "safe"]
 
@@ -42,7 +42,9 @@ def load_rows(dataset_path: Path) -> list[dict]:
     return rows
 
 
-def pick_sample(rows: list[dict], sample_id: str) -> dict:
+def pick_sample(rows: list[dict], sample_id: str, subcategory: str = "") -> dict:
+    if subcategory:
+        rows = [row for row in rows if str(row.get("subcategory")) == subcategory]
     if sample_id:
         for row in rows:
             if str(row.get("id")) == str(sample_id):
@@ -102,15 +104,41 @@ def render(node: str, sample: dict) -> dict:
     raise ValueError(f"未知节点: {node}（可选 judge/generate/polish/label/verify）")
 
 
+def list_categories() -> dict:
+    """大类 -> 小类映射（供日志页联动选择）。"""
+    groups: dict[str, list[str]] = {}
+    for sub in V6_SUBCATEGORIES:
+        parent = GB_OF_V6.get(sub, "BENIGN")
+        groups.setdefault(parent, []).append(sub)
+    return {
+        "found": True,
+        "categories": [
+            {
+                "id": parent,
+                "name": VLM_EVALUATOR_NAMES.get(parent, "对照组" if parent == "BENIGN" else parent),
+                "subcategories": subs,
+            }
+            for parent, subs in sorted(groups.items(), key=lambda item: (item[0] != "BENIGN", item[0]))
+        ],
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="还原各节点 LLM 完整提示词")
-    parser.add_argument("--node", required=True, choices=["judge", "generate", "polish", "label", "verify"])
+    parser.add_argument("--node", choices=["judge", "generate", "polish", "label", "verify"])
     parser.add_argument("--dataset", required=True, type=Path)
     parser.add_argument("--sample-id", default="")
+    parser.add_argument("--subcategory", default="")
+    parser.add_argument("--list-categories", action="store_true")
     args = parser.parse_args()
 
     try:
-        sample = pick_sample(load_rows(args.dataset), args.sample_id)
+        if args.list_categories:
+            print(json.dumps(list_categories(), ensure_ascii=False))
+            return 0
+        if args.node is None:
+            raise ValueError("--node 必填（judge/generate/polish/label/verify）")
+        sample = pick_sample(load_rows(args.dataset), args.sample_id, args.subcategory)
         payload = render(args.node, sample)
         payload.update({
             "found": True,
