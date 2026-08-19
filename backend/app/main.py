@@ -1021,7 +1021,8 @@ def resolve_judge_samples(dataset_path: Path, img_dir: Path) -> list[dict]:
                 if row.get("id") and row.get("prompt"):
                     index.setdefault(str(row["id"]), row)
     global_index: dict[str, dict] = {}
-    for candidate in OUTPUT_ROOT.rglob("gen.jsonl"):
+    # 全局兜底按路径确定性排序（rglob 顺序不定会导致同 id 命中错误数据集的 prompt）
+    for candidate in sorted(OUTPUT_ROOT.rglob("gen.jsonl")):
         for row in iter_jsonl(candidate):
             if row.get("id") and row.get("prompt"):
                 global_index.setdefault(str(row["id"]), row)
