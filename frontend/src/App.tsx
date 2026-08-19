@@ -1,8 +1,8 @@
 import { FormEvent, useEffect, useState } from "react";
-import { CategoriesResponse, CategoryNode, ConfigOptions, Dashboard, Dataset, GenerationOptions, GenerationRun, PolishOptions, PolishRun, PolishSample, PreviewResult, PromptView, ProviderResponse, QuotaSnapshot, loadCategories, loadConfigOptions, loadDashboard, loadGenerationOptions, loadGenerationRun, loadPolishOptions, loadPolishRun, loadPrompts, loadProviders, loadQuota, previewRun, startGeneration, startPolish } from "./api";
+import { CategoriesResponse, CategoryNode, ConfigOptions, Dashboard, Dataset, GenerationOptions, GenerationRun, PolishOptions, PolishRun, PolishSample, PreviewResult, PromptView, ProviderResponse, QuotaSnapshot, T2IJudgeResult, T2IRun, judgeT2I, loadCategories, loadConfigOptions, loadDashboard, loadGenerationOptions, loadGenerationRun, loadPolishOptions, loadPolishRun, loadPrompts, loadProviders, loadQuota, loadT2IRun, previewRun, startGeneration, startPolish, startT2IGenerate } from "./api";
 import { Icon, IconName } from "./icons";
 
-const navItems: Array<[string, IconName]> = [["概览", "overview"], ["数据集", "dataset"], ["生成数据集", "generate"], ["Polish", "polish"], ["运行任务", "runs"], ["结果分析", "analysis"], ["日志", "log"]];
+const navItems: Array<[string, IconName]> = [["概览", "overview"], ["数据集", "dataset"], ["生成数据集", "generate"], ["图像实验", "image"], ["Polish", "polish"], ["运行任务", "runs"], ["结果分析", "analysis"], ["日志", "log"]];
 const statusLabel = { running: "运行中", completed: "已完成", queued: "队列中" };
 
 export function App() {
@@ -13,7 +13,7 @@ export function App() {
   const [active, setActive] = useState("概览");
   const [quota, setQuota] = useState<QuotaSnapshot | null>(null);
   const [quotaLoading, setQuotaLoading] = useState(false);
-  const [view, setView] = useState<"overview" | "composer" | "generator" | "polish" | "providers" | "logs">("overview");
+  const [view, setView] = useState<"overview" | "composer" | "generator" | "polish" | "providers" | "logs" | "t2i">("overview");
 
   const refresh = () => {
     Promise.all([loadDashboard(), loadConfigOptions(), loadProviders().catch(() => null)]).then(([nextDashboard, nextOptions, nextProviders]) => {
@@ -73,6 +73,10 @@ export function App() {
       setTimeout(() => document.getElementById("pipeline")?.scrollIntoView({ behavior: "smooth" }), 0);
       return;
     }
+    if (label === "图像实验") {
+      setView("t2i");
+      return;
+    }
     if (label === "日志") {
       setView("logs");
       return;
@@ -110,6 +114,8 @@ export function App() {
           <PolishWorkbench onBack={() => { setView("overview"); setActive("概览"); }} />
         ) : view === "providers" ? (
           <ProviderConsole providers={providers} onBack={() => { setView("overview"); setActive("概览"); }} onRefresh={refresh} />
+        ) : view === "t2i" ? (
+          <T2IExperimentPage datasets={dashboard.datasets} options={options} onBack={() => { setView("overview"); setActive("概览"); }} />
         ) : view === "logs" ? (
           <LogsPage datasets={dashboard.datasets} onBack={() => { setView("overview"); setActive("概览"); }} />
         ) : (
@@ -422,6 +428,129 @@ function PolishWorkbench({ onBack }: { onBack: () => void }) {
     <section className="panel polish-preview-panel">
       <div className="panel-heading"><div><p className="eyebrow">PROMPT COMPARISON</p><h2>{focused ? `${focused.id} 的前后对比` : "选择样本查看提示词"}</h2></div>{focused && <span className={`prompt-status ${focused.status}`}>{focused.status === "polished" ? `已生成 ${focused.polished?.length || 0} 条候选` : focused.status === "pending" ? "等待生成" : "原始拒答"}</span>}</div>
       {focused ? <div className="prompt-comparison"><article><span>原始提示词</span><p>{focused.prompt}</p></article><article className="polished-output"><span>Polish 后提示词</span>{focused.polished?.length ? focused.polished.map((item, index) => <div className="candidate-prompt" key={item.id}><small>候选 {index + 1}</small><p>{item.prompt}</p></div>) : <p className="empty-prompt">暂无候选</p>}</article></div> : null}
+    </section>
+  </>;
+}
+
+function T2IExperimentPage({ datasets, options, onBack }: { datasets: Dataset[]; options: ConfigOptions; onBack: () => void }) {
+  const [datasetId, setDatasetId] = useState(datasets[0]?.id || "");
+  const [subcategory, setSubcategory] = useState("");
+  const [limit, setLimit] = useState(4);
+  const [model, setModel] = useState("zhipu-free");
+  const [run, setRun] = useState<T2IRun | null>(null);
+  const [judgeModel, setJudgeModel] = useState("gemma-4-12b-it");
+  const [judgeResults, setJudgeResults] = useState<Record<string, T2IJudgeResult>>({});
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const datasetCategories = datasets.find((dataset) => dataset.id === datasetId)?.categories || {};
+  const subcats = Object.keys(datasetCategories);
+
+  useEffect(() => {
+    if (!run || run.status !== "running") return;
+    const timer = window.setInterval(() => {
+      loadT2IRun(run.id).then(setRun).catch((reason) => setError(reason instanceof Error ? reason.message : "状态读取失败"));
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, [run]);
+
+  const start = async () => {
+    setBusy(true);
+    setError("");
+    setJudgeResults({});
+    setSelected(new Set());
+    try {
+      const result = await startT2IGenerate({ dataset_id: datasetId, model, subcategory: subcategory || undefined, limit });
+      if (!result.accepted || !result.run) throw new Error(result.message);
+      setRun(result.run);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "生图任务未启动");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const judge = async () => {
+    if (!run || !selected.size) return;
+    setBusy(true);
+    setError("");
+    try {
+      const response = await judgeT2I({ run_id: run.id, model: judgeModel, sample_ids: [...selected] });
+      if (!response.found) throw new Error(response.message || "裁判失败");
+      const map: Record<string, T2IJudgeResult> = {};
+      (response.results || []).forEach((result) => { map[result.id] = result; });
+      setJudgeResults(map);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "裁判失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggle = (sampleId: string) => {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(sampleId)) next.delete(sampleId);
+      else next.add(sampleId);
+      return next;
+    });
+  };
+
+  const running = run?.status === "running";
+
+  return <>
+    <section className="composer-heading">
+      <button className="back-button" onClick={onBack}><Icon name="back" />返回实验概览</button>
+      <p className="eyebrow">STAGED T2I EXPERIMENT</p><h1>图像实验</h1>
+    </section>
+    <section className="panel t2i-panel">
+      <div className="t2i-form">
+        <label className="t2i-field">数据集
+          <select value={datasetId} onChange={(event) => { setDatasetId(event.target.value); setSubcategory(""); }}>
+            {datasets.map((dataset) => <option key={dataset.id} value={dataset.id}>{dataset.name} · {dataset.count} 条</option>)}
+          </select>
+        </label>
+        <label className="t2i-field">小类
+          <select value={subcategory} onChange={(event) => setSubcategory(event.target.value)}>
+            <option value="">全部</option>
+            {subcats.map((sub) => <option key={sub} value={sub}>{sub}</option>)}
+          </select>
+        </label>
+        <label className="t2i-field">数量
+          <input className="number-input" type="number" min="1" max="10" value={limit} onChange={(event) => setLimit(Math.min(10, Math.max(1, Number(event.target.value) || 1)))} />
+        </label>
+        <label className="t2i-field">生图模型
+          <select value={model} onChange={(event) => setModel(event.target.value)}>
+            {options.t2i_models.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+          </select>
+        </label>
+        <button className="primary" onClick={() => void start()} disabled={busy || running || !datasetId}><Icon name="image" />{running ? "生成中…" : busy ? "处理中…" : "生成图像"}</button>
+      </div>
+      {error && <p className="inline-error">{error}</p>}
+      {run && <>
+        <div className="t2i-progress"><span>任务 {run.id}</span><b>{run.done} / {run.total}</b></div>
+        <div className="t2i-grid">
+          {run.samples.map((sample) => <article className={`t2i-card ${sample.status}`} key={sample.id}>
+            {sample.status === "success" ? <img src={`/api/t2i/images/${run.id}/${sample.id}`} alt={sample.id} onClick={() => setExpanded(expanded === sample.id ? null : sample.id)} /> : <div className="t2i-placeholder">{sample.status === "error" ? sample.error : "生成中…"}</div>}
+            <div className="t2i-meta">
+              <b>{sample.subcategory}</b>
+              <input type="checkbox" checked={selected.has(sample.id)} onChange={() => toggle(sample.id)} disabled={sample.status !== "success"} title="送裁判" />
+            </div>
+            {judgeResults[sample.id] && <div className={`t2i-verdict ${judgeResults[sample.id].status === "done" ? (judgeResults[sample.id].unsafe ? "unsafe" : "safe") : "error"}`}>{judgeResults[sample.id].status === "done" ? (judgeResults[sample.id].unsafe ? "RISK" : "safe") : "裁判失败"}{judgeResults[sample.id].reason ? ` · ${judgeResults[sample.id].reason}` : ""}{judgeResults[sample.id].error ? ` · ${judgeResults[sample.id].error}` : ""}</div>}
+            {expanded === sample.id && sample.prompt && <pre className="t2i-prompt">{sample.prompt}</pre>}
+          </article>)}
+        </div>
+        <div className="t2i-judge-bar">
+          <label className="t2i-field">裁判模型
+            <select value={judgeModel} onChange={(event) => setJudgeModel(event.target.value)}>
+              {options.judge_models.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+          </label>
+          <button className="secondary" onClick={() => void judge()} disabled={busy || !selected.size}><Icon name="analysis" />送裁判（{selected.size}）</button>
+        </div>
+      </>}
     </section>
   </>;
 }

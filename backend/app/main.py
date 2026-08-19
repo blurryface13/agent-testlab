@@ -17,9 +17,12 @@ from pathlib import Path
 from collections import Counter
 from typing import Literal, Union
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
+
+from app.t2i_client import generate_image, judge_image
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PIPELINE_ROOT = PROJECT_ROOT.parent / "demo"
@@ -804,3 +807,178 @@ def generation_run(run_id: str) -> dict:
     if run is None:
         return {"found": False, "message": "任务不存在，或本地服务重启后任务状态未保留。"}
     return {"found": True, "run": generation_run_payload(run)}
+
+
+# ---------------- T2I 阶段性实验：生图 + 裁判 ----------------
+
+class T2IGenerateRequest(BaseModel):
+    """阶段性生图：选少量提示词（数据集/小类/条数），调 T2I 模型生成图像。"""
+
+    dataset_id: str = Field(min_length=1, max_length=500)
+    model: str = Field(min_length=1, max_length=80)
+    subcategory: str = Field(default="", max_length=80)
+    limit: int = Field(default=5, ge=1, le=20)
+    sample_ids: list[str] = Field(default_factory=list, max_length=50)
+
+
+class T2IJudgeRequest(BaseModel):
+    """阶段性裁判：对已生成图像的样本送 VLM 判定。"""
+
+    run_id: str = Field(min_length=1, max_length=200)
+    model: str = Field(min_length=1, max_length=80)
+    sample_ids: list[str] = Field(min_length=1, max_length=50)
+
+
+T2I_RUNS: dict[str, dict] = {}
+
+
+def t2i_worker(run: dict, env: dict) -> None:
+    """后台线程：逐条生图并落盘，增量写 results.jsonl。"""
+    for rec in run["samples"]:
+        if run["cancelled"]:
+            rec["status"] = "cancelled"
+            break
+        image, error = generate_image(rec["prompt"], run["model"], env)
+        if error:
+            rec["status"] = "error"
+            rec["error"] = error
+        else:
+            target = run["img_dir"] / f"{rec['id']}.png"
+            target.write_bytes(image or b"")
+            rec["status"] = "success"
+            rec["img"] = target.name
+            rec["size_kb"] = len(image or b"") // 1024
+        run["done"] += 1
+        with (run["out_dir"] / "results.jsonl").open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        if rec["status"] != "success":
+            print(f"  T2I [{rec['id']}] {rec['status']}: {rec.get('error', '')[:80]}", flush=True)
+    run["status"] = "completed"
+
+
+def t2i_run_payload(run: dict) -> dict:
+    samples = [
+        {key: rec.get(key) for key in ("id", "subcategory", "category", "prompt", "status", "error", "img", "size_kb")}
+        for rec in run["samples"]
+    ]
+    return {
+        "id": run["id"],
+        "status": run["status"],
+        "model": run["model"],
+        "done": run["done"],
+        "total": len(run["samples"]),
+        "output_dir": str(run["out_dir"].relative_to(OUTPUT_ROOT)),
+        "samples": samples,
+    }
+
+
+def t2i_run_from_disk(run_id: str) -> dict | None:
+    """服务重启后从磁盘恢复 run（results.jsonl + imgs/）。"""
+    out_dir = OUTPUT_ROOT / "ui_t2i" / run_id
+    if not (out_dir / "results.jsonl").exists():
+        return None
+    samples = list(iter_jsonl(out_dir / "results.jsonl"))
+    return {
+        "id": run_id,
+        "status": "completed",
+        "model": "unknown",
+        "done": len(samples),
+        "samples": samples,
+        "out_dir": out_dir,
+        "img_dir": out_dir / "imgs",
+    }
+
+
+@app.post("/api/t2i/generate")
+def t2i_generate(request: T2IGenerateRequest) -> dict:
+    model = next((item for item in T2I_MODELS if item["id"] == request.model), None)
+    if model is None:
+        return {"accepted": False, "message": "所选生图模型不存在。"}
+    dataset_path = OUTPUT_ROOT / request.dataset_id
+    if not dataset_path.exists():
+        return {"accepted": False, "message": "数据集不存在。"}
+    rows = list(iter_jsonl(dataset_path))
+    if request.sample_ids:
+        wanted = set(request.sample_ids)
+        rows = [row for row in rows if str(row.get("id")) in wanted]
+    elif request.subcategory:
+        rows = [row for row in rows if str(row.get("subcategory")) == request.subcategory]
+    rows = rows[:request.limit]
+    if not rows:
+        return {"accepted": False, "message": "没有匹配的提示词样本。"}
+
+    run_id = f"t2i-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:5]}"
+    out_dir = OUTPUT_ROOT / "ui_t2i" / run_id
+    img_dir = out_dir / "imgs"
+    img_dir.mkdir(parents=True, exist_ok=False)
+    samples = [{
+        "id": str(row.get("id", f"s{i}")),
+        "subcategory": str(row.get("subcategory", "")),
+        "category": str(row.get("category", "")),
+        "prompt": str(row.get("prompt", "")),
+        "status": "pending",
+    } for i, row in enumerate(rows)]
+    run = {
+        "id": run_id, "status": "running", "model": request.model,
+        "done": 0, "samples": samples, "out_dir": out_dir, "img_dir": img_dir,
+        "cancelled": False,
+    }
+    T2I_RUNS[run_id] = run
+    import threading
+
+    thread = threading.Thread(target=t2i_worker, args=(run, local_env_values()), daemon=True)
+    thread.start()
+    return {"accepted": True, "message": f"生图任务已启动（{len(samples)} 条，{model['name']}）。", "run": t2i_run_payload(run)}
+
+
+@app.get("/api/t2i/runs/{run_id}")
+def t2i_run_status(run_id: str) -> dict:
+    run = T2I_RUNS.get(run_id) or t2i_run_from_disk(run_id)
+    if run is None:
+        return {"found": False, "message": "任务不存在。"}
+    return {"found": True, "run": t2i_run_payload(run)}
+
+
+@app.get("/api/t2i/images/{run_id}/{sample_id}")
+def t2i_image(run_id: str, sample_id: str) -> FileResponse:
+    """返回已生成图像（PNG）。sample_id 白名单校验，防目录穿越。"""
+    if not all(char.isalnum() or char in "-_" for char in sample_id):
+        raise HTTPException(400, "非法样本 id")
+    run = T2I_RUNS.get(run_id) or t2i_run_from_disk(run_id)
+    if run is None:
+        raise HTTPException(404, "任务不存在")
+    image_path = run["img_dir"] / f"{sample_id}.png"
+    if not image_path.exists():
+        raise HTTPException(404, "图像不存在")
+    return FileResponse(image_path, media_type="image/png")
+
+
+@app.post("/api/t2i/judge")
+def t2i_judge(request: T2IJudgeRequest) -> dict:
+    """对选中的图像逐张送 VLM 裁判（同步执行）。"""
+    run = T2I_RUNS.get(request.run_id) or t2i_run_from_disk(request.run_id)
+    if run is None:
+        return {"found": False, "message": "生图任务不存在。"}
+    judge = next((item for item in JUDGE_MODELS if item["id"] == request.model), None)
+    if judge is None:
+        return {"found": False, "message": "所选裁判模型不存在。"}
+    env = local_env_values()
+    results = []
+    for sample_id in request.sample_ids:
+        rec = next((s for s in run["samples"] if s["id"] == sample_id), None)
+        if rec is None:
+            results.append({"id": sample_id, "status": "error", "error": "样本不存在"})
+            continue
+        image_path = run["img_dir"] / f"{sample_id}.png"
+        if not image_path.exists():
+            results.append({"id": sample_id, "status": "error", "error": "图像不存在"})
+            continue
+        unsafe, error, reason = judge_image(
+            rec["prompt"], rec["category"] or "A.1", rec["subcategory"], image_path.read_bytes(),
+            request.model, env,
+        )
+        if error:
+            results.append({"id": sample_id, "status": "error", "error": error})
+        else:
+            results.append({"id": sample_id, "status": "done", "unsafe": unsafe, "reason": reason})
+    return {"found": True, "model": request.model, "results": results}

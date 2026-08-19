@@ -1,7 +1,7 @@
 // 图标来源: notionicons.simple.ink (Bootstrap / DevUI / Eva Icons, MIT 类免费许可)
 // 生成于 2026-08-18；path 数据由 /api/icons 提取，fill=currentColor 跟随主题。
 
-export type IconName = "overview" | "dataset" | "generate" | "polish" | "runs" | "analysis" | "channel" | "refresh" | "back" | "forward" | "log" | "search";
+export type IconName = "overview" | "dataset" | "generate" | "polish" | "runs" | "analysis" | "channel" | "refresh" | "back" | "forward" | "log" | "search" | "image";
 
 const ICON_PATHS: Record<IconName, { viewBox: string; paths: string[] }> = {
   overview: { viewBox: "0 0 24 24", paths: ["M12 4a1 1 0 0 0-1 1v15a1 1 0 0 0 2 0V5a1 1 0 0 0-1-1ZM19 12a1 1 0 0 0-1 1v7a1 1 0 0 0 2 0v-7a1 1 0 0 0-1-1ZM5 8a1 1 0 0 0-1 1v11a1 1 0 0 0 2 0V9a1 1 0 0 0-1-1Z"] },
@@ -16,6 +16,7 @@ const ICON_PATHS: Record<IconName, { viewBox: string; paths: string[] }> = {
   forward: { viewBox: "0 0 24 24", paths: ["M10.46 18a2.23 2.23 0 0 1-.91-.2 1.76 1.76 0 0 1-1.05-1.59V7.79A1.76 1.76 0 0 1 9.55 6.2a2.1 2.1 0 0 1 2.21.26l5.1 4.21a1.7 1.7 0 0 1 0 2.66l-5.1 4.21a2.06 2.06 0 0 1-1.3.46Z"] },
   log: { viewBox: "0 0 16 16", paths: ["M6 9a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1h-3A.5.5 0 0 1 6 9zM3.854 4.146a.5.5 0 1 0-.708.708L4.793 6.5 3.146 8.146a.5.5 0 1 0 .708.708l2-2a.5.5 0 0 0 0-.708l-2-2z", "M2 1a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V3a2 2 0 0 0-2-2H2zm12 1a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h12z"] },
   search: { viewBox: "0 0 16 16", paths: ["M12.123 10.679 15 13.556 13.556 15l-2.877-2.877a6.128 6.128 0 1 1 1.444-1.444Zm-4.995.535a4.085 4.085 0 1 0 0-8.171 4.085 4.085 0 0 0 0 8.17Z"] },
+  image: { viewBox: "0 0 16 16", paths: ["M6.002 5.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z", "M2.002 1a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V3a2 2 0 0 0-2-2h-12zm12 1a1 1 0 0 1 1 1v6.5l-3.777-1.947a.5.5 0 0 0-.577.093l-3.71 3.71-2.66-1.772a.5.5 0 0 0-.63.062L1.002 12V3a1 1 0 0 1 1-1h12z"] },
 };
 
 export function Icon({ name, size = 16, className = "icon" }: { name: IconName; size?: number; className?: string }) {

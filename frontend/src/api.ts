@@ -215,6 +215,40 @@ export async function loadPrompts(node: string, datasetId?: string, subcategory?
   return await response.json() as PromptView;
 }
 
+export type T2ISample = { id: string; subcategory?: string; category?: string; prompt?: string; status: "pending" | "success" | "error" | "cancelled"; error?: string; img?: string; size_kb?: number };
+export type T2IRun = { id: string; status: "running" | "completed"; model: string; done: number; total: number; output_dir: string; samples: T2ISample[] };
+export type T2IStartResult = { accepted: boolean; message: string; run?: T2IRun };
+export type T2IJudgeResult = { id: string; status: "done" | "error"; unsafe?: boolean; reason?: string; error?: string };
+export type T2IJudgeResponse = { found: boolean; model?: string; results?: T2IJudgeResult[]; message?: string };
+
+export async function startT2IGenerate(payload: { dataset_id: string; model: string; subcategory?: string; limit: number }): Promise<T2IStartResult> {
+  const response = await fetch("/api/t2i/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error("生图任务提交失败");
+  return await response.json() as T2IStartResult;
+}
+
+export async function loadT2IRun(runId: string): Promise<T2IRun> {
+  const response = await fetch(`/api/t2i/runs/${encodeURIComponent(runId)}`);
+  if (!response.ok) throw new Error("生图任务状态读取失败");
+  const payload = await response.json() as { found: boolean; run?: T2IRun; message?: string };
+  if (!payload.found || !payload.run) throw new Error(payload.message || "生图任务不存在");
+  return payload.run;
+}
+
+export async function judgeT2I(payload: { run_id: string; model: string; sample_ids: string[] }): Promise<T2IJudgeResponse> {
+  const response = await fetch("/api/t2i/judge", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error("裁判任务提交失败");
+  return await response.json() as T2IJudgeResponse;
+}
+
 export async function loadQuota(): Promise<QuotaSnapshot> {
   const response = await fetch("/api/quota/refresh");
   if (!response.ok) throw new Error("额度查询服务不可用");
