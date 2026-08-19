@@ -444,6 +444,7 @@ function JudgeAnalysisPage({ datasets, options, onBack }: { datasets: Dataset[];
   const [judges, setJudges] = useState<string[]>(["gemma-4-12b-it", "gpt-5.4"]);
   const [limit, setLimit] = useState(50);
   const [run, setRun] = useState<JudgeRun | null>(null);
+  const [judgeRuns, setJudgeRuns] = useState<Array<{ id: string; status: string; done: number; total: number }>>([]);
   const [tab, setTab] = useState<"all" | "disagree">("disagree");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -457,6 +458,7 @@ function JudgeAnalysisPage({ datasets, options, onBack }: { datasets: Dataset[];
     const restore = async () => {
       try {
         const runs = await loadJudgeRuns();
+        setJudgeRuns(runs);
         const running = runs.find((item) => item.status === "running");
         if (running) {
           const run = await loadJudgeRun(running.id);
@@ -520,6 +522,16 @@ function JudgeAnalysisPage({ datasets, options, onBack }: { datasets: Dataset[];
         <label className="t2i-field">数量
           <input className="number-input" type="number" min="1" max="100" value={limit} onChange={(event) => setLimit(Math.min(100, Math.max(1, Number(event.target.value) || 1)))} />
         </label>
+        {judgeRuns.length > 0 && <label className="t2i-field">历史任务
+          <select value={run?.id || ""} onChange={(event) => {
+            const id = event.target.value;
+            if (!id) return;
+            loadJudgeRun(id).then(setRun).catch((reason) => setError(reason instanceof Error ? reason.message : "任务读取失败"));
+          }}>
+            <option value="">— 选择历史任务查看 —</option>
+            {judgeRuns.map((item) => <option key={item.id} value={item.id}>{item.id.slice(-12)} · {item.status === "running" ? "判定中" : item.status === "completed" ? "已完成" : "失败"} · {item.done}/{item.total}</option>)}
+          </select>
+        </label>}
         <button className="primary" onClick={() => void start()} disabled={busy || running || judges.length < 2 || !datasetId}><Icon name="analysis" />{running ? "判定中…" : busy ? "处理中…" : "批量裁判"}</button>
       </div>
       <div className="judge-judges">
