@@ -834,11 +834,17 @@ T2I_RUNS: dict[str, dict] = {}
 
 
 def t2i_worker(run: dict, env: dict) -> None:
-    """后台线程：逐条生图并落盘，增量写 results.jsonl。"""
+    """后台线程：逐条生图并落盘，增量写 results.jsonl。
+
+    断点续跑：目标图像已存在则跳过（不重新生成）。
+    """
     for rec in run["samples"]:
         if run["cancelled"]:
             rec["status"] = "cancelled"
             break
+        target = run["img_dir"] / f"{rec['id']}.png"
+        if target.exists() and rec.get("status") == "success":
+            continue
         image, error = generate_image(rec["prompt"], run["model"], env)
         if error:
             rec["status"] = "error"
