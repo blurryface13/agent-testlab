@@ -466,6 +466,14 @@ function JudgeAnalysisPage({ datasets, options, onBack }: { datasets: Dataset[];
           localStorage.setItem("judgeRunId", run.id);
           return;
         }
+        // 无 running 时优先最近完成的完整任务（done==total——排除暂停/中断的半截任务）
+        const lastComplete = runs.find((item) => item.status === "completed" && item.done > 0 && item.done === item.total);
+        if (lastComplete) {
+          const run = await loadJudgeRun(lastComplete.id);
+          setRun(run);
+          localStorage.setItem("judgeRunId", run.id);
+          return;
+        }
       } catch {
         // 列表读取失败时退回 localStorage
       }

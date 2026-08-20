@@ -56,6 +56,7 @@ T2I_MODELS = [
     {"id": "qwen-image", "name": "Qwen Image 官方", "channel": "DashScope 官方", "mode": "官方"},
     {"id": "gpt-image-2", "name": "GPT Image 2", "channel": "APIDock", "mode": "官方"},
     {"id": "gemini-3.1-flash-image", "name": "Gemini 3.1 Flash Image", "channel": "DMXAPI", "mode": "常用"},
+    {"id": "qwen-image-2.0", "name": "Qwen Image 2.0", "channel": "DMXAPI", "mode": "主力"},
     {"id": "qwen-image-2.0-pro", "name": "Qwen Image 2.0 Pro", "channel": "DMXAPI", "mode": "备选"},
     {"id": "wan2.7-image", "name": "Wan 2.7 Image", "channel": "DMXAPI", "mode": "备选"},
     {"id": "doubao-seedream-5.0-lite", "name": "Doubao Seedream 5.0 Lite", "channel": "DMXAPI", "mode": "备选"},
@@ -817,7 +818,7 @@ class T2IGenerateRequest(BaseModel):
     dataset_id: str = Field(min_length=1, max_length=500)
     model: str = Field(min_length=1, max_length=80)
     subcategory: str = Field(default="", max_length=80)
-    limit: int = Field(default=5, ge=1, le=20)
+    limit: int = Field(default=5, ge=1, le=200)
     sample_ids: list[str] = Field(default_factory=list, max_length=50)
 
 

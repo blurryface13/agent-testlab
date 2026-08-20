@@ -24,6 +24,7 @@ T2I_CHANNELS: dict[str, tuple[str, str]] = {
     "qwen-image": ("dashscope", "qwen-image"),
     "gpt-image-2": ("apidock", "gpt-image-2"),
     "gemini-3.1-flash-image": ("dmx", "gemini-3.1-flash-image"),
+    "qwen-image-2.0": ("dmx", "qwen-image-2.0"),
     "qwen-image-2.0-pro": ("dmx", "qwen-image-2.0-pro"),
     "wan2.7-image": ("dmx", "wan2.7-image"),
     "doubao-seedream-5.0-lite": ("dmx", "doubao-seedream-5.0-lite"),
@@ -83,6 +84,21 @@ def _download(url: str, timeout: int = 90) -> bytes:
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.read()
+
+
+def _extract_responses_image_url(data: dict) -> str:
+    """从 Responses API 返回里提取图像 URL（兼容 data[0].url 与 output[0].content[0].text 两种结构）。"""
+    for block in data.get("data") or []:
+        url = block.get("url")
+        if url:
+            return str(url)
+    for block in data.get("output") or []:
+        for content in block.get("content") or []:
+            if content.get("type") == "image" and content.get("text"):
+                return str(content["text"])
+            if content.get("type") == "image_url" and content.get("image_url"):
+                return str(content["image_url"].get("url", ""))
+    return ""
 
 
 def _extract_b64_image(content: str) -> bytes | None:
@@ -160,9 +176,36 @@ def generate_image(prompt: str, model_id: str, env: dict[str, str]) -> tuple[byt
 
         if channel == "dmx":
             key = env.get("DMXAPI_API_KEY", "")
-            base = env.get("DMXAPI_BASE_URL", "https://www.dmxapi.cn/v1")
+            base = env.get("DMXAPI_BASE_URL", "https://www.dmxapi.cn/v1").rstrip("/")
+            if model in ("wan2.7-image", "doubao-seedream-5.0-lite", "doubao-seedream-5.0-pro-260628"):
+                # wan/seedream 走 Responses API（input 直接字符串）
+                payload = {"model": model, "input": prompt, "size": "1024*1024"}
+                data = _post_json(f"{base}/responses", payload, key, timeout=240)
+                url = _extract_responses_image_url(data)
+                if url:
+                    try:
+                        return _download(url), None
+                    except Exception as exc:
+                        return None, f"dmx 图片下载失败: {str(exc)[:100]}"
+                return None, f"dmx responses 无图像: {str(data)[:160]}"
+            if model.startswith("qwen-image"):
+                # qwen-image 系走 Responses API（messages 结构）
+                payload = {
+                    "model": model,
+                    "input": {"messages": [{"role": "user", "content": [{"text": prompt}]}]},
+                    "size": "1024*1024",
+                }
+                data = _post_json(f"{base}/responses", payload, key, timeout=240)
+                url = _extract_responses_image_url(data)
+                if url:
+                    try:
+                        return _download(url), None
+                    except Exception as exc:
+                        return None, f"dmx 图片下载失败: {str(exc)[:100]}"
+                return None, f"dmx responses 无图像: {str(data)[:160]}"
+            # gemini-image 系走 chat/completions
             data = _post_json(
-                f"{base.rstrip('/')}/chat/completions",
+                f"{base}/chat/completions",
                 {"model": model, "messages": [{"role": "user", "content": f"画一张图：{prompt}"}], "max_tokens": 4000},
                 key, timeout=240,
             )
