@@ -38,7 +38,7 @@ JUDGE_CHANNELS: dict[str, tuple[str, str, str]] = {
     "gemma-4-12b-it": ("gamma", "gemma-4-12b-it", GAMMA_VLLM_BASE),
     "deepseek-chat": ("deepseek", "deepseek-chat", "https://api.deepseek.com"),
     "qwen-plus": ("dashscope", "qwen-plus", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
-    "gpt-5.4": ("dmx", "gpt-5.4", "https://www.dmxapi.cn/v1"),
+    "gpt-5.4": ("apidock", "gpt-5.4", "https://apidock.ai/v1"),
     "gpt-5.5": ("apidock", "gpt-5.5", "https://apidock.ai/v1"),
     "gpt-5.6-sol": ("apidock", "gpt-5.6-sol", "https://apidock.ai/v1"),
     "gpt-5.6-luna": ("apidock", "gpt-5.6-luna", "https://apidock.ai/v1"),
@@ -225,26 +225,32 @@ def generate_image(prompt: str, model_id: str, env: dict[str, str]) -> tuple[byt
 
 
 def judge_image(prompt: str, category: str, subcategory: str, image_bytes: bytes,
-                model_id: str, env: dict[str, str]) -> tuple[bool | None, str | None, str]:
-    """VLM 图像裁判：返回 (unsafe, error, raw_reason)。
+                model_id: str, env: dict[str, str]) -> tuple[bool | None, str | None, str, str | None, list[str]]:
+    """VLM 图像裁判：返回 (unsafe, error, reason, risk_category, risk_subcategories)。
 
     使用提示词唯一入口：system=类别知识、评估约束与输出契约；
-    user=原始提示词+图像。
+    user=来源标签（待核对目标）+原始提示词+图像。
     """
     import sys
 
     sys.path.insert(0, os.getenv("T2I_DEMO_EVAL_DIR", "/Users/dora/Downloads/GEN/demo/dataset_eval"))
     from category_definitions import GB_OF_V6
-    from vlm_judge_prompts import build_vlm_judge_instruction, build_vlm_judge_system, parse_vlm_reason, parse_vlm_unsafe
+    from vlm_judge_prompts import (
+        build_vlm_judge_instruction,
+        build_vlm_judge_system,
+        parse_vlm_reason,
+        parse_vlm_risk_labels,
+        parse_vlm_unsafe,
+    )
 
     # 大类优先从 subcategory 推导（GB_OF_V6），兼容 category 字段缺失的数据集
     resolved_category = GB_OF_V6.get(subcategory, category or "A.1")
     item = {"prompt": prompt, "category": resolved_category, "subcategory": subcategory}
     if not subcategory:
-        return None, "样本缺少 subcategory，无法判定", ""
+        return None, "样本缺少 subcategory，无法判定", "", None, []
     entry = JUDGE_CHANNELS.get(model_id)
     if entry is None:
-        return None, f"未知裁判模型: {model_id}", ""
+        return None, f"未知裁判模型: {model_id}", "", None, []
     channel, model, base_url = entry
 
     if channel == "dmx":
@@ -259,7 +265,7 @@ def judge_image(prompt: str, category: str, subcategory: str, image_bytes: bytes
     elif channel == "apidock":
         api_key = env.get("APIDOCK_API_KEY", "")
     else:
-        return None, f"未知裁判通道: {channel}", ""
+        return None, f"未知裁判通道: {channel}", "", None, []
 
     try:
         b64 = base64.b64encode(image_bytes).decode("ascii")
@@ -286,16 +292,24 @@ def judge_image(prompt: str, category: str, subcategory: str, image_bytes: bytes
                 if "SSL" in last_error or "524" in last_error or "502" in last_error or "503" in last_error:
                     time.sleep(2 * (attempt + 1))
                     continue
-                return None, last_error, ""
+                return None, last_error, "", None, []
         if data is None:
-            return None, f"apidock 重试 4 次仍失败: {last_error}", ""
+            return None, f"apidock 重试 4 次仍失败: {last_error}", "", None, []
         raw = (data.get("choices") or [{}])[0].get("message", {}).get("content", "")
         unsafe = parse_vlm_unsafe(raw)
         if unsafe is None:
-            return None, "裁判输出未遵守 {\"safe\": bool} 契约", str(raw)[:150]
-        return unsafe, None, parse_vlm_reason(raw)
+            return None, "裁判输出未遵守 {\"safe\": bool} 契约", str(raw)[:150], None, []
+        reason = parse_vlm_reason(raw)
+        risk_category, risk_subcategories = parse_vlm_risk_labels(raw, category=resolved_category)
+        if unsafe and (risk_category != resolved_category or not risk_subcategories):
+            # 旧任务可能只返回 {reason, safe}。保留图像级结论，但不以来源标签
+            # 伪造“实际风险标签”；新提示词仍要求模型显式返回标签。
+            return unsafe, None, reason, None, []
+        if not unsafe and (risk_category is not None or risk_subcategories):
+            return None, "safe 裁判输出不应携带风险标签", reason, None, []
+        return unsafe, None, reason, risk_category, risk_subcategories
     except Exception as exc:  # noqa: BLE001
-        return None, f"{type(exc).__name__}: {str(exc)[:160]}", ""
+        return None, f"{type(exc).__name__}: {str(exc)[:160]}", "", None, []
 
 
 if __name__ == "__main__":

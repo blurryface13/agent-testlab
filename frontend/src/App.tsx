@@ -444,7 +444,7 @@ function JudgeAnalysisPage({ datasets, options, onBack }: { datasets: Dataset[];
   const [judges, setJudges] = useState<string[]>(["gemma-4-12b-it", "gpt-5.4"]);
   const [limit, setLimit] = useState(50);
   const [run, setRun] = useState<JudgeRun | null>(null);
-  const [judgeRuns, setJudgeRuns] = useState<Array<{ id: string; status: string; done: number; total: number }>>([]);
+  const [judgeRuns, setJudgeRuns] = useState<Array<{ id: string; task_name: string; source_model?: string; status: string; done: number; total: number; judges: string[] }>>([]);
   const [tab, setTab] = useState<"all" | "disagree">("disagree");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -537,7 +537,7 @@ function JudgeAnalysisPage({ datasets, options, onBack }: { datasets: Dataset[];
             loadJudgeRun(id).then(setRun).catch((reason) => setError(reason instanceof Error ? reason.message : "任务读取失败"));
           }}>
             <option value="">— 选择历史任务查看 —</option>
-            {judgeRuns.map((item) => <option key={item.id} value={item.id}>{item.id.slice(-12)} · {item.status === "running" ? "判定中" : item.status === "completed" ? "已完成" : "失败"} · {item.done}/{item.total}</option>)}
+            {judgeRuns.map((item) => <option key={item.id} value={item.id}>{item.task_name} · {item.status === "running" ? "判定中" : item.status === "completed" ? "已完成" : "失败"} · {item.done}/{item.total}</option>)}
           </select>
         </label>}
         <button className="primary" onClick={() => void start()} disabled={busy || running || judges.length < 2 || !datasetId}><Icon name="analysis" />{running ? "判定中…" : busy ? "处理中…" : "批量裁判"}</button>
@@ -553,7 +553,7 @@ function JudgeAnalysisPage({ datasets, options, onBack }: { datasets: Dataset[];
           <div className="judge-stat key"><span>一致率</span><strong>{(stats.agree_rate * 100).toFixed(1)}%</strong><small>{stats.agree}/{stats.complete} 一致</small></div>
           <div className="judge-stat key"><span>不一致样本</span><strong>{stats.disagree_count}</strong><small>{stats.complete} 条已判</small></div>
         </div>
-        <div className="judge-progress"><span>任务 {run.id}</span><b>{run.done} / {run.total}</b></div>
+        <div className="judge-progress"><span>{run.task_name || run.id}</span><b>{run.done} / {run.total}</b></div>
         <div className="judge-tabs">
           <button className={tab === "disagree" ? "judge-tab active" : "judge-tab"} onClick={() => setTab("disagree")}>不一致样本（{stats.disagree_count}）</button>
           <button className={tab === "all" ? "judge-tab active" : "judge-tab"} onClick={() => setTab("all")}>全部（{run.samples.length}）</button>
@@ -584,7 +584,16 @@ function JudgeAnalysisPage({ datasets, options, onBack }: { datasets: Dataset[];
               <div className="judge-all-verdicts">
                 {Object.entries(sample.judges || {}).map(([judgeId, verdict]) => <span className={verdict.unsafe ? "unsafe" : "safe"} key={judgeId}>{options.judge_models.find((m) => m.id === judgeId)?.name.split(" ")[0] || judgeId}: {verdict.unsafe ? "R" : "S"}</span>)}
               </div>
-              {expanded === sample.id && sample.prompt && <pre className="t2i-prompt">{sample.prompt}</pre>}
+              {expanded === sample.id && <>
+                {sample.prompt && <pre className="t2i-prompt">{sample.prompt}</pre>}
+                <div className="judge-all-reasons">
+                  {Object.entries(sample.judges || {}).map(([judgeId, verdict]) => <div className={`disagree-verdict ${verdict.unsafe ? "unsafe" : "safe"}`} key={judgeId}>
+                    <b>{options.judge_models.find((m) => m.id === judgeId)?.name || judgeId}</b>
+                    <em>{verdict.unsafe ? "RISK" : "safe"}</em>
+                    <p>{verdict.reason || "（无 reason）"}</p>
+                  </div>)}
+                </div>
+              </>}
             </article>)}
           </div>
         )}

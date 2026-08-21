@@ -80,6 +80,7 @@ def render(node: str, sample: dict) -> dict:
             positive=definition.get("positive", []),
             negative=definition.get("negative", []),
             boundary=definition.get("boundary", ""),
+            object_types=definition.get("object_types", []),
         )
         user = build_generation_request(
             subcategory=sub, category=parent, plan={**plan, "count": 1},

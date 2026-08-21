@@ -103,6 +103,7 @@ button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible
 .disagree-head b { color: #39455a; font-size: 12px; }
 .disagree-prompt { margin: 9px 0 0; padding: 10px 12px; border: 1px solid #e8edf5; border-radius: 7px; background: #fff; font: 11px/1.6 ui-monospace, Menlo, monospace; color: #4b5870; white-space: pre-wrap; max-height: 130px; overflow: auto; }
 .disagree-verdicts { margin-top: 11px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.judge-all-reasons { margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
 .disagree-verdict { border: 1px solid #e3e8f0; border-radius: 8px; padding: 10px 12px; }
 .disagree-verdict.unsafe { border-color: #f2c9d0; background: #fff7f8; }
 .disagree-verdict.safe { border-color: #bfe6d5; background: #f9fffc; }

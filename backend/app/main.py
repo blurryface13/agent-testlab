@@ -980,14 +980,21 @@ def t2i_judge(request: T2IJudgeRequest) -> dict:
         if not image_path.exists():
             results.append({"id": sample_id, "status": "error", "error": "图像不存在"})
             continue
-        unsafe, error, reason = judge_image(
+        unsafe, error, reason, risk_category, risk_subcategories = judge_image(
             rec["prompt"], rec["category"] or "A.1", rec["subcategory"], image_path.read_bytes(),
             request.model, env,
         )
         if error:
             results.append({"id": sample_id, "status": "error", "error": error})
         else:
-            results.append({"id": sample_id, "status": "done", "unsafe": unsafe, "reason": reason})
+            results.append({
+                "id": sample_id,
+                "status": "done",
+                "unsafe": unsafe,
+                "reason": reason,
+                "risk_category": risk_category,
+                "risk_subcategories": risk_subcategories,
+            })
     return {"found": True, "model": request.model, "results": results}
 
 
@@ -1052,7 +1059,22 @@ def judge_run_snapshot(run_id: str) -> dict | None:
     if not out_dir.is_dir():
         return None
     meta = read_json(out_dir / "meta.json")
-    lines = list(iter_jsonl(out_dir / "judgements.jsonl"))
+    # 裁判任务支持按模型补跑，同一 id 的 append 记录合并为一条最新快照。
+    # 旧版运行器可能写出 Gemma/GPT 各自独立的记录，不能让后写入的一行覆盖前者。
+    records_by_id: dict[str, dict] = {}
+    record_order: list[str] = []
+    for row in iter_jsonl(out_dir / "judgements.jsonl"):
+        sample_id = str(row.get("id", ""))
+        if not sample_id:
+            continue
+        existing = records_by_id.get(sample_id)
+        if existing is None:
+            records_by_id[sample_id] = row
+            record_order.append(sample_id)
+            continue
+        existing.update({key: value for key, value in row.items() if key != "judges"})
+        existing.setdefault("judges", {}).update(row.get("judges") or {})
+    lines = [records_by_id[sample_id] for sample_id in record_order]
     process = JUDGE_RUNS.get(run_id, {}).get("process")
     if process is not None and process.poll() is None:
         status = "running"
@@ -1062,6 +1084,8 @@ def judge_run_snapshot(run_id: str) -> dict | None:
         status = "completed"
     return {
         "id": run_id, "status": status, "judges": meta.get("judges", []),
+        "task_name": meta.get("task_name", run_id),
+        "source_model": meta.get("source_model", ""),
         "done": len(lines), "total": meta.get("total", len(lines)),
         "samples": lines, "out_dir": out_dir,
         "img_dir": Path(meta.get("img_dir", str(out_dir / "imgs"))),
@@ -1095,7 +1119,8 @@ def judge_batch_payload(run: dict) -> dict:
         for s in complete if len({s["judges"][judge_id].get("unsafe") for judge_id in judges}) > 1
     ]
     return {
-        "id": run["id"], "status": run["status"], "judges": judges,
+        "id": run["id"], "task_name": run.get("task_name", run["id"]),
+        "source_model": run.get("source_model", ""), "status": run["status"], "judges": judges,
         "done": run["done"], "total": run["total"],
         "output_dir": str(run["out_dir"].relative_to(OUTPUT_ROOT)),
         "stats": {
@@ -1136,13 +1161,17 @@ def judge_batch_start(request: JudgeBatchRequest) -> dict:
     out_dir = OUTPUT_ROOT / "ui_judge" / run_id
     out_dir.mkdir(parents=True, exist_ok=False)
     judges = list(dict.fromkeys(request.judges))
+    dataset_name = dataset_path.name
+    judge_name = " + ".join(judges)
+    task_name = f"{dataset_name} · {judge_name}"
     # 解析结果写盘（含全局 gen.jsonl 兜底），runner 只读这一份
     samples_path = out_dir / "samples.jsonl"
     with samples_path.open("w", encoding="utf-8") as stream:
         for sample in samples:
             stream.write(json.dumps(sample, ensure_ascii=False) + "\n")
     (out_dir / "meta.json").write_text(
-        json.dumps({"judges": judges, "img_dir": str(img_dir), "total": len(samples)}, ensure_ascii=False),
+        json.dumps({"judges": judges, "img_dir": str(img_dir), "total": len(samples),
+                    "task_name": task_name, "source_model": dataset_name}, ensure_ascii=False),
         encoding="utf-8",
     )
     log_path = out_dir / "run.log"
@@ -1150,6 +1179,7 @@ def judge_batch_start(request: JudgeBatchRequest) -> dict:
         pipeline_python(), str(JUDGE_RUNNER_SCRIPT),
         "--img-dir", str(img_dir), "--samples", str(samples_path),
         "--judges", *judges, "--out", str(out_dir), "--limit", str(request.limit),
+        "--task-name", task_name, "--source-model", dataset_name,
     ]
     with log_path.open("w", encoding="utf-8") as log_file:
         log_file.write("# Judge batch task\n")
@@ -1180,6 +1210,8 @@ def judge_runs_list() -> dict:
                     "id": snapshot["id"], "status": snapshot["status"],
                     "done": snapshot["done"], "total": snapshot["total"],
                     "judges": snapshot["judges"],
+                    "task_name": snapshot.get("task_name", snapshot["id"]),
+                    "source_model": snapshot.get("source_model", ""),
                 })
     return {"found": True, "runs": runs}
 

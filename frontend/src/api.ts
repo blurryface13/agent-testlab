@@ -253,7 +253,7 @@ export type JudgeDataset = { id: string; name: string; count: number; path: stri
 export type JudgeVerdict = { unsafe: boolean | null; reason?: string; error?: string };
 export type JudgeSample = { id: string; subcategory?: string; prompt?: string; judges: Record<string, JudgeVerdict> };
 export type JudgeStats = { per_judge: Record<string, { total: number; unsafe: number; asr: number }>; complete: number; agree: number; agree_rate: number; disagree_count: number };
-export type JudgeRun = { id: string; status: "running" | "completed"; judges: string[]; done: number; total: number; output_dir: string; stats: JudgeStats; samples: JudgeSample[]; disagree: JudgeSample[] };
+export type JudgeRun = { id: string; task_name: string; source_model?: string; status: "running" | "completed"; judges: string[]; done: number; total: number; output_dir: string; stats: JudgeStats; samples: JudgeSample[]; disagree: JudgeSample[] };
 export type JudgeStartResult = { accepted: boolean; message: string; run?: JudgeRun };
 
 export async function loadJudgeDatasets(): Promise<JudgeDataset[]> {
@@ -273,10 +273,10 @@ export async function startJudgeBatch(payload: { dataset_id: string; judges: str
   return await response.json() as JudgeStartResult;
 }
 
-export async function loadJudgeRuns(): Promise<Array<{ id: string; status: string; done: number; total: number; judges: string[] }>> {
+export async function loadJudgeRuns(): Promise<Array<{ id: string; task_name: string; source_model?: string; status: string; done: number; total: number; judges: string[] }>> {
   const response = await fetch("/api/judge/runs");
   if (!response.ok) throw new Error("裁判任务列表读取失败");
-  const payload = await response.json() as { found: boolean; runs: Array<{ id: string; status: string; done: number; total: number; judges: string[] }> };
+  const payload = await response.json() as { found: boolean; runs: Array<{ id: string; task_name: string; source_model?: string; status: string; done: number; total: number; judges: string[] }> };
   return payload.runs || [];
 }
 
