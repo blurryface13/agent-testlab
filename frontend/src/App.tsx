@@ -578,24 +578,26 @@ function JudgeAnalysisPage({ datasets, options, onBack }: { datasets: Dataset[];
             </article>)}
           </div>
         ) : (
-          <div className="t2i-grid judge-all-grid">
-            {run.samples.map((sample) => <article className="t2i-card" key={sample.id}>
+          <div className="judge-all-grid">
+            {run.samples.map((sample) => <article className="disagree-card" key={sample.id}>
               <img src={`/api/judge/images/${run.id}/${sample.id}`} alt={sample.id} onClick={() => setExpanded(expanded === sample.id ? null : sample.id)} />
-              <div className="t2i-meta"><b>{sample.subcategory}</b></div>
-              <div className="judge-all-verdicts">
-                {Object.entries(sample.judges || {}).map(([judgeId, verdict]) => <span className={verdict.unsafe ? "unsafe" : "safe"} key={judgeId}>{options.judge_models.find((m) => m.id === judgeId)?.name.split(" ")[0] || judgeId}: {verdict.unsafe ? "R" : "S"}</span>)}
-              </div>
-              {expanded === sample.id && <>
-                {sample.prompt && <pre className="t2i-prompt">{sample.prompt}</pre>}
-                <div className="judge-all-reasons">
-                  {Object.entries(sample.judges || {}).map(([judgeId, verdict]) => <div className={`disagree-verdict ${verdict.unsafe ? "unsafe" : "safe"}`} key={judgeId}>
-                    <b>{options.judge_models.find((m) => m.id === judgeId)?.name || judgeId}</b>
-                    <em>{verdict.unsafe ? "RISK" : "safe"}</em>
-                    {verdict.unsafe && (verdict.risk_category || (verdict.risk_subcategories && verdict.risk_subcategories.length > 0)) && <span className="risk-label">{verdict.risk_category || ""}{verdict.risk_subcategories && verdict.risk_subcategories.length > 0 ? ` · ${verdict.risk_subcategories.join(", ")}` : ""}</span>}
-                    <p>{verdict.reason || "（无 reason）"}</p>
-                  </div>)}
+              <div className="disagree-body">
+                <div className="disagree-head"><b>{sample.subcategory}</b><span>{sample.id}</span></div>
+                <div className="judge-all-verdicts">
+                  {Object.entries(sample.judges || {}).map(([judgeId, verdict]) => <span className={verdict.unsafe ? "unsafe" : "safe"} key={judgeId}>{options.judge_models.find((m) => m.id === judgeId)?.name.split(" ")[0] || judgeId}: {verdict.unsafe ? "R" : "S"}</span>)}
                 </div>
-              </>}
+                {expanded === sample.id && <>
+                  {sample.prompt && <pre className="disagree-prompt">{sample.prompt}</pre>}
+                  <div className="judge-all-reasons">
+                    {Object.entries(sample.judges || {}).map(([judgeId, verdict]) => <div className={`disagree-verdict ${verdict.unsafe ? "unsafe" : "safe"}`} key={judgeId}>
+                      <b>{options.judge_models.find((m) => m.id === judgeId)?.name || judgeId}</b>
+                      <em>{verdict.unsafe ? "RISK" : "safe"}</em>
+                      {verdict.unsafe && (verdict.risk_category || (verdict.risk_subcategories && verdict.risk_subcategories.length > 0)) && <span className="risk-label">{verdict.risk_category || ""}{verdict.risk_subcategories && verdict.risk_subcategories.length > 0 ? ` · ${verdict.risk_subcategories.join(", ")}` : ""}</span>}
+                      <p>{verdict.reason || "（无 reason）"}</p>
+                    </div>)}
+                  </div>
+                </>}
+              </div>
             </article>)}
           </div>
         )}
