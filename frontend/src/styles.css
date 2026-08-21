@@ -93,6 +93,7 @@ button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible
 .judge-progress { margin-top: 14px; display: flex; justify-content: space-between; color: #77849a; font-size: 12px; }
 .judge-progress b { color: #39455a; }
 .judge-tabs { margin-top: 16px; display: flex; gap: 6px; border-bottom: 1px solid #edf0f5; padding-bottom: 10px; }
+.judge-subfilter { margin-left: auto; padding: 5px 10px; border: 1px solid #d8e0ec; border-radius: 7px; font-size: 12px; color: #39455a; background: #fff; }
 .judge-tab { border: 0; background: transparent; padding: 7px 13px; border-radius: 7px; color: #5d6a7e; font-size: 13px; font-weight: 620; cursor: pointer; }
 .judge-tab.active { background: #e9f1ff; color: #276cf1; font-weight: 690; }
 .disagree-list { margin-top: 16px; display: grid; gap: 16px; }

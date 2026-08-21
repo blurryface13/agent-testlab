@@ -446,6 +446,7 @@ function JudgeAnalysisPage({ datasets, options, onBack }: { datasets: Dataset[];
   const [run, setRun] = useState<JudgeRun | null>(null);
   const [judgeRuns, setJudgeRuns] = useState<Array<{ id: string; task_name: string; source_model?: string; status: string; done: number; total: number; judges: string[] }>>([]);
   const [tab, setTab] = useState<"all" | "disagree">("disagree");
+  const [subFilter, setSubFilter] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -557,11 +558,15 @@ function JudgeAnalysisPage({ datasets, options, onBack }: { datasets: Dataset[];
         <div className="judge-tabs">
           <button className={tab === "disagree" ? "judge-tab active" : "judge-tab"} onClick={() => setTab("disagree")}>不一致样本（{stats.disagree_count}）</button>
           <button className={tab === "all" ? "judge-tab active" : "judge-tab"} onClick={() => setTab("all")}>全部（{run.samples.length}）</button>
+          {run.samples.length > 0 && <select className="judge-subfilter" value={subFilter} onChange={(event) => setSubFilter(event.target.value)}>
+            <option value="">全部小类</option>
+            {Array.from(new Set(run.samples.map((s) => s.subcategory || ""))).filter(Boolean).sort().map((sub) => <option key={sub} value={sub}>{sub}</option>)}
+          </select>}
         </div>
         {tab === "disagree" ? (
           <div className="disagree-list">
-            {run.disagree.length === 0 && <p className="panel-description">无不一致样本——所有裁判结论一致。</p>}
-            {run.disagree.map((sample) => <article className="disagree-card" key={sample.id}>
+            {run.disagree.filter((sample) => !subFilter || sample.subcategory === subFilter).length === 0 && <p className="panel-description">无不一致样本——所有裁判结论一致。</p>}
+            {run.disagree.filter((sample) => !subFilter || sample.subcategory === subFilter).map((sample) => <article className="disagree-card" key={sample.id}>
               <img src={`/api/judge/images/${run.id}/${sample.id}`} alt={sample.id} />
               <div className="disagree-body">
                 <div className="disagree-head"><b>{sample.subcategory}</b><span>{sample.id}</span></div>
@@ -580,7 +585,7 @@ function JudgeAnalysisPage({ datasets, options, onBack }: { datasets: Dataset[];
           </div>
         ) : (
           <div className="judge-all-grid">
-            {run.samples.map((sample) => <article className="disagree-card" key={sample.id}>
+            {run.samples.filter((sample) => !subFilter || sample.subcategory === subFilter).map((sample) => <article className="disagree-card" key={sample.id}>
               <img src={`/api/judge/images/${run.id}/${sample.id}`} alt={sample.id} onClick={() => setExpanded(expanded === sample.id ? null : sample.id)} />
               <div className="disagree-body">
                 <div className="disagree-head"><b>{sample.subcategory}</b><span>{sample.id}</span></div>
