@@ -106,6 +106,7 @@ button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible
 .judge-all-reasons { margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
 .disagree-verdict { border: 1px solid #e3e8f0; border-radius: 8px; padding: 10px 12px; }
 .risk-label { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 9px; background: #fdeaea; color: #c0392b; font: 11px/1.5 ui-monospace, Menlo, monospace; vertical-align: 1px; }
+.risk-label.reject { background: #eef1f5; color: #8a94a6; }
 .disagree-verdict.unsafe { border-color: #f2c9d0; background: #fff7f8; }
 .disagree-verdict.safe { border-color: #bfe6d5; background: #f9fffc; }
 .disagree-verdict b { font-size: 12px; color: #39455a; }

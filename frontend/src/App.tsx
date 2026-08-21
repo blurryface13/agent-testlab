@@ -571,7 +571,8 @@ function JudgeAnalysisPage({ datasets, options, onBack }: { datasets: Dataset[];
                     <b>{options.judge_models.find((m) => m.id === judgeId)?.name || judgeId}</b>
                     <em>{verdict.unsafe ? "RISK" : "safe"}</em>
                     {verdict.unsafe && (verdict.risk_category || (verdict.risk_subcategories && verdict.risk_subcategories.length > 0)) && <span className="risk-label">{verdict.risk_category || ""}{verdict.risk_subcategories && verdict.risk_subcategories.length > 0 ? ` · ${verdict.risk_subcategories.join(", ")}` : ""}</span>}
-                    <p>{verdict.reason || "（无 reason）"}</p>
+                    {verdict.error && <span className="risk-label reject">拒 · {verdict.error.includes("403") ? "通道审核" : verdict.error.slice(0, 18)}</span>}
+                    <p>{verdict.reason || (verdict.error ? "（判定失败）" : "（无 reason）")}</p>
                   </div>)}
                 </div>
               </div>
@@ -593,7 +594,8 @@ function JudgeAnalysisPage({ datasets, options, onBack }: { datasets: Dataset[];
                       <b>{options.judge_models.find((m) => m.id === judgeId)?.name || judgeId}</b>
                       <em>{verdict.unsafe ? "RISK" : "safe"}</em>
                       {verdict.unsafe && (verdict.risk_category || (verdict.risk_subcategories && verdict.risk_subcategories.length > 0)) && <span className="risk-label">{verdict.risk_category || ""}{verdict.risk_subcategories && verdict.risk_subcategories.length > 0 ? ` · ${verdict.risk_subcategories.join(", ")}` : ""}</span>}
-                      <p>{verdict.reason || "（无 reason）"}</p>
+                      {verdict.error && <span className="risk-label reject">拒 · {verdict.error.includes("403") ? "通道审核" : verdict.error.slice(0, 18)}</span>}
+                      <p>{verdict.reason || (verdict.error ? "（判定失败）" : "（无 reason）")}</p>
                     </div>)}
                   </div>
                 </>}
