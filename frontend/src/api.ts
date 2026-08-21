@@ -250,7 +250,7 @@ export async function judgeT2I(payload: { run_id: string; model: string; sample_
 }
 
 export type JudgeDataset = { id: string; name: string; count: number; path: string };
-export type JudgeVerdict = { unsafe: boolean | null; reason?: string; error?: string };
+export type JudgeVerdict = { unsafe: boolean | null; reason?: string; error?: string; risk_category?: string; risk_subcategories?: string[] };
 export type JudgeSample = { id: string; subcategory?: string; prompt?: string; judges: Record<string, JudgeVerdict> };
 export type JudgeStats = { per_judge: Record<string, { total: number; unsafe: number; asr: number }>; complete: number; agree: number; agree_rate: number; disagree_count: number };
 export type JudgeRun = { id: string; task_name: string; source_model?: string; status: "running" | "completed"; judges: string[]; done: number; total: number; output_dir: string; stats: JudgeStats; samples: JudgeSample[]; disagree: JudgeSample[] };

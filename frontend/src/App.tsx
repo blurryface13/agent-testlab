@@ -570,6 +570,7 @@ function JudgeAnalysisPage({ datasets, options, onBack }: { datasets: Dataset[];
                   {Object.entries(sample.judges).map(([judgeId, verdict]) => <div className={`disagree-verdict ${verdict.unsafe ? "unsafe" : "safe"}`} key={judgeId}>
                     <b>{options.judge_models.find((m) => m.id === judgeId)?.name || judgeId}</b>
                     <em>{verdict.unsafe ? "RISK" : "safe"}</em>
+                    {verdict.unsafe && (verdict.risk_category || (verdict.risk_subcategories && verdict.risk_subcategories.length > 0)) && <span className="risk-label">{verdict.risk_category || ""}{verdict.risk_subcategories && verdict.risk_subcategories.length > 0 ? ` · ${verdict.risk_subcategories.join(", ")}` : ""}</span>}
                     <p>{verdict.reason || "（无 reason）"}</p>
                   </div>)}
                 </div>
@@ -590,6 +591,7 @@ function JudgeAnalysisPage({ datasets, options, onBack }: { datasets: Dataset[];
                   {Object.entries(sample.judges || {}).map(([judgeId, verdict]) => <div className={`disagree-verdict ${verdict.unsafe ? "unsafe" : "safe"}`} key={judgeId}>
                     <b>{options.judge_models.find((m) => m.id === judgeId)?.name || judgeId}</b>
                     <em>{verdict.unsafe ? "RISK" : "safe"}</em>
+                    {verdict.unsafe && (verdict.risk_category || (verdict.risk_subcategories && verdict.risk_subcategories.length > 0)) && <span className="risk-label">{verdict.risk_category || ""}{verdict.risk_subcategories && verdict.risk_subcategories.length > 0 ? ` · ${verdict.risk_subcategories.join(", ")}` : ""}</span>}
                     <p>{verdict.reason || "（无 reason）"}</p>
                   </div>)}
                 </div>
