@@ -954,10 +954,11 @@ def t2i_image(run_id: str, sample_id: str) -> FileResponse:
     run = T2I_RUNS.get(run_id) or t2i_run_from_disk(run_id)
     if run is None:
         raise HTTPException(404, "任务不存在")
-    image_path = run["img_dir"] / f"{sample_id}.png"
-    if not image_path.exists():
+    candidates = sorted(run["img_dir"].glob(f"{sample_id}.*"))
+    if not candidates:
         raise HTTPException(404, "图像不存在")
-    return FileResponse(image_path, media_type="image/png")
+    image_path = candidates[0]
+    return FileResponse(image_path, media_type="image/png" if image_path.suffix == ".png" else "image/jpeg")
 
 
 @app.post("/api/t2i/judge")
@@ -1086,6 +1087,7 @@ def judge_run_snapshot(run_id: str) -> dict | None:
         "id": run_id, "status": status, "judges": meta.get("judges", []),
         "task_name": meta.get("task_name", run_id),
         "source_model": meta.get("source_model", ""),
+        "category": meta.get("category", "internal"),
         "done": len(lines), "total": meta.get("total", len(lines)),
         "samples": lines, "out_dir": out_dir,
         "img_dir": Path(meta.get("img_dir", str(out_dir / "imgs"))),
@@ -1212,6 +1214,7 @@ def judge_runs_list() -> dict:
                     "judges": snapshot["judges"],
                     "task_name": snapshot.get("task_name", snapshot["id"]),
                     "source_model": snapshot.get("source_model", ""),
+                    "category": snapshot.get("category", "internal"),
                 })
     return {"found": True, "runs": runs}
 
@@ -1232,7 +1235,8 @@ def judge_image_file(run_id: str, sample_id: str) -> FileResponse:
     run = judge_run_snapshot(run_id)
     if run is None:
         raise HTTPException(404, "任务不存在")
-    image_path = run["img_dir"] / f"{sample_id}.png"
-    if not image_path.exists():
+    candidates = sorted(run["img_dir"].glob(f"{sample_id}.*"))
+    if not candidates:
         raise HTTPException(404, "图像不存在")
-    return FileResponse(image_path, media_type="image/png")
+    image_path = candidates[0]
+    return FileResponse(image_path, media_type="image/png" if image_path.suffix == ".png" else "image/jpeg")

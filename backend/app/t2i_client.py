@@ -36,6 +36,7 @@ T2I_CHANNELS: dict[str, tuple[str, str]] = {
 # 裁判模型 id -> (通道, 模型名, base_url)
 JUDGE_CHANNELS: dict[str, tuple[str, str, str]] = {
     "gemma-4-12b-it": ("gamma", "gemma-4-12b-it", GAMMA_VLLM_BASE),
+    "qwen3.8-max": ("dmx", "qwen3.8-max", "https://www.dmxapi.cn/v1"),
     "deepseek-chat": ("deepseek", "deepseek-chat", "https://api.deepseek.com"),
     "qwen-plus": ("dashscope", "qwen-plus", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
     "gpt-5.4": ("apidock", "gpt-5.4", "https://apidock.ai/v1"),

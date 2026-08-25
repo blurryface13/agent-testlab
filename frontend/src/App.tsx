@@ -444,7 +444,7 @@ function JudgeAnalysisPage({ datasets, options, onBack }: { datasets: Dataset[];
   const [judges, setJudges] = useState<string[]>(["gemma-4-12b-it", "gpt-5.4"]);
   const [limit, setLimit] = useState(50);
   const [run, setRun] = useState<JudgeRun | null>(null);
-  const [judgeRuns, setJudgeRuns] = useState<Array<{ id: string; task_name: string; source_model?: string; status: string; done: number; total: number; judges: string[] }>>([]);
+  const [judgeRuns, setJudgeRuns] = useState<Array<{ id: string; task_name: string; source_model?: string; status: string; done: number; total: number; judges: string[]; category?: string }>>([]);
   const [tab, setTab] = useState<"all" | "disagree">("disagree");
   const [subFilter, setSubFilter] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -538,7 +538,14 @@ function JudgeAnalysisPage({ datasets, options, onBack }: { datasets: Dataset[];
             loadJudgeRun(id).then(setRun).catch((reason) => setError(reason instanceof Error ? reason.message : "任务读取失败"));
           }}>
             <option value="">— 选择历史任务查看 —</option>
-            {judgeRuns.map((item) => <option key={item.id} value={item.id}>{item.task_name} · {item.status === "running" ? "判定中" : item.status === "completed" ? "已完成" : "失败"} · {item.done}/{item.total}</option>)}
+            {(() => {
+              const groups: Record<string, typeof judgeRuns> = { internal: [], external: [] };
+              judgeRuns.forEach((item) => groups[item.category === "external" ? "external" : "internal"].push(item));
+              return <>
+                <optgroup label="内部评测">{groups.internal.map((item) => <option key={item.id} value={item.id}>{item.task_name} · {item.status === "running" ? "判定中" : item.status === "completed" ? "已完成" : "失败"} · {item.done}/{item.total}</option>)}</optgroup>
+                <optgroup label="外部基准（公开数据集）">{groups.external.map((item) => <option key={item.id} value={item.id}>{item.task_name} · {item.status === "running" ? "判定中" : item.status === "completed" ? "已完成" : "失败"} · {item.done}/{item.total}</option>)}</optgroup>
+              </>;
+            })()}
           </select>
         </label>}
         <button className="primary" onClick={() => void start()} disabled={busy || running || judges.length < 2 || !datasetId}><Icon name="analysis" />{running ? "判定中…" : busy ? "处理中…" : "批量裁判"}</button>
