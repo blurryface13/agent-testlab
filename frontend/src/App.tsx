@@ -2,7 +2,12 @@ import { FormEvent, useEffect, useState } from "react";
 import { CategoriesResponse, CategoryNode, ConfigOptions, Dashboard, Dataset, GenerationOptions, GenerationRun, JudgeRun, PolishOptions, PolishRun, PolishSample, PreviewResult, PromptView, ProviderResponse, QuotaSnapshot, T2IJudgeResult, T2IRun, judgeT2I, loadCategories, loadConfigOptions, loadDashboard, loadGenerationOptions, loadGenerationRun, loadJudgeDatasets, loadJudgeRun, loadJudgeRuns, loadPolishOptions, loadPolishRun, loadPrompts, loadProviders, loadQuota, loadT2IRun, previewRun, startGeneration, startJudgeBatch, startPolish, startT2IGenerate } from "./api";
 import { Icon, IconName } from "./icons";
 
-const navItems: Array<[string, IconName]> = [["概览", "overview"], ["数据集", "dataset"], ["生成数据集", "generate"], ["图像实验", "image"], ["裁判分析", "analysis"], ["Polish", "polish"], ["运行任务", "runs"], ["结果分析", "analysis"], ["日志", "log"]];
+const navGroups: Array<{ caption: string; items: Array<[string, IconName]> }> = [
+  { caption: "工作台", items: [["概览", "overview"], ["数据集", "dataset"]] },
+  { caption: "提示词工作流", items: [["提示词生成", "generate"], ["提示词优化", "polish"]] },
+  { caption: "裁判评测", items: [["图像实验", "image"], ["裁判任务", "runs"], ["结果分析", "analysis"]] },
+  { caption: "记录", items: [["日志", "log"]] },
+];
 const statusLabel = { running: "运行中", completed: "已完成", queued: "队列中" };
 
 export function App() {
@@ -38,11 +43,11 @@ export function App() {
   };
 
   const openComposer = () => {
-    setActive("运行任务");
+    setActive("裁判任务");
     setView("composer");
   };
   const openGenerator = () => {
-    setActive("生成数据集");
+    setActive("提示词生成");
     setView("generator");
   };
   const openProviders = () => {
@@ -50,21 +55,21 @@ export function App() {
     setView("providers");
   };
   const openPolish = () => {
-    setActive("Polish");
+    setActive("提示词优化");
     setView("polish");
   };
 
   const selectNav = (label: string) => {
     setActive(label);
-    if (label === "运行任务") {
+    if (label === "裁判任务") {
       setView("composer");
       return;
     }
-    if (label === "生成数据集") {
+    if (label === "提示词生成") {
       setView("generator");
       return;
     }
-    if (label === "Polish") {
+    if (label === "提示词优化") {
       setView("polish");
       return;
     }
@@ -101,8 +106,11 @@ export function App() {
       </header>
 
       <aside className="sidebar">
-        <p className="nav-caption">评测工作台</p>
-        {navItems.map(([label, icon]) => <button key={label} className={active === label ? "nav-item selected" : "nav-item"} onClick={() => selectNav(label)}><Icon name={icon} />{label}</button>)}
+        {navGroups.map((group, index) => <div className="nav-group" key={group.caption}>
+          {index > 0 && <div className="sidebar-separator group-separator" />}
+          <p className="nav-caption">{group.caption}</p>
+          {group.items.map(([label, icon]) => <button key={label} className={active === label ? "nav-item selected" : "nav-item"} onClick={() => selectNav(label)}><Icon name={icon} />{label}</button>)}
+        </div>)}
         <div className="sidebar-separator" />
         <p className="nav-caption">系统</p>
         <button className={active === "通道与额度" ? "nav-item selected" : "nav-item"} onClick={openProviders}><Icon name="channel" />通道与额度</button>
@@ -128,7 +136,22 @@ export function App() {
           <>
             <section className="page-heading">
               <div><p className="eyebrow">PIPELINE OVERVIEW</p><h1>实验概览</h1></div>
-              <div className="heading-actions"><button className="secondary" onClick={refresh}><Icon name="refresh" />刷新</button><button className="secondary" onClick={openPolish}>Polish</button><button className="secondary" onClick={openComposer}>新建评测</button><button className="primary" onClick={openGenerator}><Icon name="generate" />生成数据集</button></div>
+              <div className="heading-actions"><button className="secondary" onClick={refresh}><Icon name="refresh" />刷新</button><button className="secondary" onClick={openPolish}>提示词优化</button><button className="secondary" onClick={openComposer}>新建裁判任务</button><button className="primary" onClick={openGenerator}><Icon name="generate" />提示词生成</button></div>
+            </section>
+
+            <section className="workflow-overview" aria-label="评测工作流分区">
+              <article className="workflow-card prompt-workflow">
+                <div className="workflow-card-top"><span className="workflow-icon"><Icon name="generate" /></span><span className="workflow-kicker">01 / PROMPT PIPELINE</span></div>
+                <h2>提示词数据工作流</h2>
+                <p>负责风险提示词数据的生成、筛选与定向优化，沉淀可复用的评测数据集。</p>
+                <div className="workflow-actions"><button className="secondary" onClick={openGenerator}>提示词生成</button><button className="text-button" onClick={openPolish}>提示词优化 <span><Icon name="forward" size={12} /></span></button></div>
+              </article>
+              <article className="workflow-card judge-workflow">
+                <div className="workflow-card-top"><span className="workflow-icon"><Icon name="analysis" /></span><span className="workflow-kicker">02 / JUDGE PIPELINE</span></div>
+                <h2>裁判评测工作流</h2>
+                <p>负责图像生成、批量裁判、任务分析与结果回看，支持不同裁判模型的对比。</p>
+                <div className="workflow-actions"><button className="secondary" onClick={() => selectNav("图像实验")}>图像实验</button><button className="text-button" onClick={() => selectNav("裁判任务")}>裁判任务 <span><Icon name="forward" size={12} /></span></button><button className="text-button" onClick={() => selectNav("结果分析")}>结果分析 <span><Icon name="forward" size={12} /></span></button></div>
+              </article>
             </section>
 
             <section className="metric-strip" aria-label="核心指标">
@@ -153,7 +176,7 @@ export function App() {
             </section>
 
             <section className="panel datasets-panel" id="datasets">
-              <div className="panel-heading"><div><p className="eyebrow">LOCAL ARTIFACTS</p><h2>数据集索引</h2></div></div>
+              <div className="panel-heading"><div><p className="eyebrow">PROMPT DATASETS</p><h2>提示词数据集</h2></div></div>
               <div className="dataset-table" role="table">
                 <div className="dataset-head" role="row"><span>数据集</span><span>样本</span><span>小类覆盖</span><span>生成来源</span><span>更新时间</span></div>
                 {dashboard.datasets.slice(0, 6).map((dataset) => <div className="dataset-row" role="row" key={dataset.id}><strong>{dataset.name}</strong><b>{dataset.count}</b><span>{Object.keys(dataset.categories).slice(0, 3).join(" · ")}</span><span>{dataset.sources.join(" · ")}</span><small>{dataset.updated_at}</small></div>)}
@@ -161,7 +184,7 @@ export function App() {
             </section>
 
             <section className="panel runs-panel" id="pipeline">
-              <div className="panel-heading"><div><p className="eyebrow">VALIDATION HISTORY</p><h2>标签校验记录</h2></div><button className="text-button">任务历史 <span><Icon name="forward" size={12} /></span></button></div>
+              <div className="panel-heading"><div><p className="eyebrow">JUDGE RESULTS</p><h2>裁判任务结果</h2></div><button className="text-button" onClick={() => selectNav("结果分析")}>查看结果 <span><Icon name="forward" size={12} /></span></button></div>
               <div className="run-table" role="table">
                 <div className="run-head" role="row"><span>裁判模型</span><span>来源数据集</span><span>匹配结果</span><span>命中率</span><span>状态</span></div>
                 {dashboard.runs.map((run) => <div className="run-row" role="row" key={run.id}><div><strong>{run.model}</strong><small>{run.created_at}</small></div><span>{run.dataset}</span><span>{run.matched}/{run.total}</span><div className="run-progress"><div><i style={{ width: `${Math.round((run.match_rate || 0) * 100)}%` }} /></div><b>{Math.round((run.match_rate || 0) * 100)}%</b></div><span className={`status ${run.status}`}><i />{statusLabel[run.status]}</span></div>)}
