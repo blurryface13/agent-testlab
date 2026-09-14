@@ -1,0 +1,17 @@
+.git
+.gitignore
+.DS_Store
+**/__pycache__
+**/*.pyc
+backend/.venv
+backend/.env
+frontend/node_modules
+frontend/dist
+data/testlab
+data/outputs
+demo
+*.log
+*.jsonl
+*.png
+*.jpg
+*.jpeg

@@ -1,14 +1,15 @@
 import { FormEvent, useEffect, useState } from "react";
-import { CategoriesResponse, CategoryNode, ConfigOptions, Dashboard, Dataset, GenerationOptions, GenerationRun, JudgeRun, PolishOptions, PolishRun, PolishSample, PreviewResult, PromptView, ProviderResponse, QuotaSnapshot, T2IJudgeResult, T2IRun, judgeT2I, loadCategories, loadConfigOptions, loadDashboard, loadGenerationOptions, loadGenerationRun, loadJudgeDatasets, loadJudgeRun, loadJudgeRuns, loadPolishOptions, loadPolishRun, loadPrompts, loadProviders, loadQuota, loadT2IRun, previewRun, startGeneration, startJudgeBatch, startPolish, startT2IGenerate } from "./api";
+import { CategoriesResponse, CategoryNode, ConfigOptions, Dashboard, Dataset, GenerationOptions, GenerationRun, JudgeRun, PolishOptions, PolishRun, PolishSample, PreviewResult, PromptView, ProviderResponse, QuotaSnapshot, TestBadCase, TestCatalog, TestCase, TestRun, T2IJudgeResult, T2IRun, judgeT2I, loadCategories, loadConfigOptions, loadDashboard, loadGenerationOptions, loadGenerationRun, loadJudgeDatasets, loadJudgeRun, loadJudgeRuns, loadPolishOptions, loadPolishRun, loadPrompts, loadProviders, loadQuota, loadT2IRun, loadTestBadCases, loadTestCatalog, loadTestRun, loadTestRuns, previewRun, previewTestRun, startGeneration, startJudgeBatch, startPolish, startT2IGenerate, startTestRun, cancelTestRun } from "./api";
 import { Icon, IconName } from "./icons";
 
 const navGroups: Array<{ caption: string; items: Array<[string, IconName]> }> = [
   { caption: "工作台", items: [["概览", "overview"], ["数据集", "dataset"]] },
   { caption: "提示词工作流", items: [["提示词生成", "generate"], ["提示词优化", "polish"]] },
   { caption: "裁判评测", items: [["图像实验", "image"], ["裁判任务", "runs"], ["结果分析", "analysis"]] },
+  { caption: "自动化测试", items: [["测试工作台", "runs"], ["测试运行", "log"], ["BadCase", "analysis"], ["测试工具", "channel"]] },
   { caption: "记录", items: [["日志", "log"]] },
 ];
-const statusLabel = { running: "运行中", completed: "已完成", queued: "队列中" };
+const statusLabel = { running: "运行中", completed: "已完成", queued: "队列中", failed: "失败", cancelled: "已取消" };
 
 export function App() {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
@@ -18,7 +19,8 @@ export function App() {
   const [active, setActive] = useState("概览");
   const [quota, setQuota] = useState<QuotaSnapshot | null>(null);
   const [quotaLoading, setQuotaLoading] = useState(false);
-  const [view, setView] = useState<"overview" | "composer" | "generator" | "polish" | "providers" | "logs" | "t2i" | "judge">("overview");
+  const [view, setView] = useState<"overview" | "composer" | "generator" | "polish" | "providers" | "logs" | "t2i" | "judge" | "testing">("overview");
+  const [testingTab, setTestingTab] = useState<"workbench" | "runs" | "badcases" | "tools">("workbench");
 
   const refresh = () => {
     Promise.all([loadDashboard(), loadConfigOptions(), loadProviders().catch(() => null)]).then(([nextDashboard, nextOptions, nextProviders]) => {
@@ -58,6 +60,11 @@ export function App() {
     setActive("提示词优化");
     setView("polish");
   };
+  const openTesting = (tab: "workbench" | "runs" | "badcases" | "tools") => {
+    setActive(tab === "workbench" ? "测试工作台" : tab === "runs" ? "测试运行" : tab === "badcases" ? "BadCase" : "测试工具");
+    setTestingTab(tab);
+    setView("testing");
+  };
 
   const selectNav = (label: string) => {
     setActive(label);
@@ -90,6 +97,10 @@ export function App() {
       setView("logs");
       return;
     }
+    if (label === "测试工作台") { openTesting("workbench"); return; }
+    if (label === "测试运行") { openTesting("runs"); return; }
+    if (label === "BadCase") { openTesting("badcases"); return; }
+    if (label === "测试工具") { openTesting("tools"); return; }
     setView("overview");
     if (label === "数据集") setTimeout(() => document.getElementById("datasets")?.scrollIntoView({ behavior: "smooth" }), 0);
   };
@@ -101,7 +112,7 @@ export function App() {
   return (
     <div className="shell">
       <header className="topbar">
-        <div className="brand"><span className="brand-mark">↗</span><span>T2I Safety Eval</span><em>LAB</em></div>
+        <div className="brand"><span className="brand-mark">↗</span><span>Agent TestLab</span><em>LAB</em></div>
         <div className="top-actions"><span className={`source-badge ${source}`}><i />{source === "api" ? "已连接本地服务" : "演示数据"}</span><button className="avatar" aria-label="当前用户">D</button></div>
       </header>
 
@@ -130,6 +141,8 @@ export function App() {
           <T2IExperimentPage datasets={dashboard.datasets} options={options} onBack={() => { setView("overview"); setActive("概览"); }} />
         ) : view === "judge" ? (
           <JudgeAnalysisPage datasets={dashboard.datasets} options={options} onBack={() => { setView("overview"); setActive("概览"); }} />
+        ) : view === "testing" ? (
+          <TestWorkbenchPage initialTab={testingTab} onTabChange={openTesting} onBack={() => { setView("overview"); setActive("概览"); }} />
         ) : view === "logs" ? (
           <LogsPage datasets={dashboard.datasets} onBack={() => { setView("overview"); setActive("概览"); }} />
         ) : (
@@ -716,6 +729,15 @@ function T2IExperimentPage({ datasets, options, onBack }: { datasets: Dataset[];
   };
 
   const running = run?.status === "running";
+  const faceSummary = (result: T2IJudgeResult) => {
+    const evidence = result.face_evidence;
+    if (!evidence || evidence.status === "not_configured") return "";
+    const candidates = (evidence.faces || []).filter((face) => face.match_status === "candidate_match");
+    if (candidates.length) return ` · 人脸候选：${candidates.map((face) => face.display_name || face.candidate_id || "未命名候选").join("、")}`;
+    if (evidence.status === "undetected") return " · 人脸：未检测到";
+    if (evidence.status === "detected") return " · 人脸：无库内匹配";
+    return " · 人脸：结果不可用";
+  };
 
   return <>
     <section className="composer-heading">
@@ -755,7 +777,7 @@ function T2IExperimentPage({ datasets, options, onBack }: { datasets: Dataset[];
               <b>{sample.subcategory}</b>
               <input type="checkbox" checked={selected.has(sample.id)} onChange={() => toggle(sample.id)} disabled={sample.status !== "success"} title="送裁判" />
             </div>
-            {judgeResults[sample.id] && <div className={`t2i-verdict ${judgeResults[sample.id].status === "done" ? (judgeResults[sample.id].unsafe ? "unsafe" : "safe") : "error"}`}>{judgeResults[sample.id].status === "done" ? (judgeResults[sample.id].unsafe ? "RISK" : "safe") : "裁判失败"}{judgeResults[sample.id].reason ? ` · ${judgeResults[sample.id].reason}` : ""}{judgeResults[sample.id].error ? ` · ${judgeResults[sample.id].error}` : ""}</div>}
+            {judgeResults[sample.id] && <div className={`t2i-verdict ${judgeResults[sample.id].status === "done" ? (judgeResults[sample.id].unsafe ? "unsafe" : "safe") : "error"}`}>{judgeResults[sample.id].status === "done" ? (judgeResults[sample.id].unsafe ? "RISK" : "safe") : "裁判失败"}{judgeResults[sample.id].reason ? ` · ${judgeResults[sample.id].reason}` : ""}{faceSummary(judgeResults[sample.id])}{judgeResults[sample.id].error ? ` · ${judgeResults[sample.id].error}` : ""}</div>}
             {expanded === sample.id && sample.prompt && <pre className="t2i-prompt">{sample.prompt}</pre>}
           </article>)}
         </div>
@@ -858,6 +880,134 @@ function LogsPage({ datasets, onBack }: { datasets: Dataset[]; onBack: () => voi
         </div>
     </section>
   </>;
+}
+
+type TestingTab = "workbench" | "runs" | "badcases" | "tools";
+
+function TestWorkbenchPage({ initialTab, onTabChange, onBack }: { initialTab: TestingTab; onTabChange: (tab: TestingTab) => void; onBack: () => void }) {
+  const [catalog, setCatalog] = useState<TestCatalog | null>(null);
+  const [runs, setRuns] = useState<TestRun[]>([]);
+  const [badcaseRows, setBadcaseRows] = useState<TestBadCase[]>([]);
+  const [target, setTarget] = useState("t2i-safety");
+  const [level, setLevel] = useState("all");
+  const [tool, setTool] = useState("pytest");
+  const [mode, setMode] = useState<"mock" | "local">("mock");
+  const [faultMode, setFaultMode] = useState("none");
+  const [selected, setSelected] = useState<string[]>([]);
+  const [preview, setPreview] = useState<import("./api").TestPreview | null>(null);
+  const [activeRun, setActiveRun] = useState<TestRun | null>(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [pending, setPending] = useState(false);
+
+  const refreshRuns = () => {
+    Promise.all([loadTestRuns(), loadTestBadCases()]).then(([nextRuns, nextBadcases]) => {
+      setRuns(nextRuns);
+      setBadcaseRows(nextBadcases);
+    }).catch((reason) => setError(reason instanceof Error ? reason.message : "运行记录读取失败"));
+  };
+
+  useEffect(() => {
+    Promise.all([loadTestCatalog(), loadTestRuns(), loadTestBadCases()]).then(([nextCatalog, nextRuns, nextBadcases]) => {
+      setCatalog(nextCatalog);
+      setRuns(nextRuns);
+      setBadcaseRows(nextBadcases);
+      setLoading(false);
+    }).catch((reason) => {
+      setError(reason instanceof Error ? reason.message : "测试工作台读取失败");
+      setLoading(false);
+    });
+  }, []);
+
+  const visibleCases = catalog?.cases.filter((item) => item.target === target && (level === "all" || item.level === level) && item.tools.includes(tool)) || [];
+  useEffect(() => {
+    setSelected((previous) => previous.filter((id) => visibleCases.some((item) => item.id === id)));
+    setPreview(null);
+  }, [target, level, tool, mode, faultMode]);
+  useEffect(() => {
+    if (visibleCases.length && !selected.length) setSelected(visibleCases.slice(0, 2).map((item) => item.id));
+  }, [catalog, target, level, tool]);
+  useEffect(() => {
+    if (!activeRun || !["queued", "running"].includes(activeRun.status)) return;
+    const timer = window.setInterval(() => {
+      loadTestRun(activeRun.id).then((next) => {
+        setActiveRun(next);
+        setRuns((previous) => [next, ...previous.filter((item) => item.id !== next.id)]);
+        if (!["queued", "running"].includes(next.status)) void loadTestBadCases().then(setBadcaseRows);
+      }).catch((reason) => setError(reason instanceof Error ? reason.message : "无法更新测试状态"));
+    }, 600);
+    return () => window.clearInterval(timer);
+  }, [activeRun]);
+
+  const doPreview = async () => {
+    setPending(true); setError("");
+    try {
+      const result = await previewTestRun({ target, case_ids: selected, tool, mode, fault_mode: faultMode });
+      setPreview(result);
+      if (!result.accepted) setError(result.message);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "测试预览失败"); }
+    finally { setPending(false); }
+  };
+  const doStart = async () => {
+    if (!preview?.accepted) return;
+    setPending(true); setError("");
+    try {
+      const result = await startTestRun({ target, case_ids: selected, tool, mode, fault_mode: faultMode, preview_hash: preview.preview_hash });
+      if (!result.accepted || !result.run) throw new Error(result.message);
+      setActiveRun(result.run); setRuns((previous) => [result.run!, ...previous.filter((item) => item.id !== result.run!.id)]); setPreview(null);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "测试任务未启动"); }
+    finally { setPending(false); }
+  };
+  const toggle = (id: string) => setSelected((previous) => previous.includes(id) ? previous.filter((item) => item !== id) : [...previous, id]);
+  const targetName = catalog?.targets.find((item) => item.id === target)?.name || target;
+
+  if (loading) return <main className="loading">正在读取测试目录…</main>;
+  return <>
+    <section className="composer-heading testing-heading">
+      <button className="back-button" onClick={onBack}><Icon name="back" />返回实验概览</button>
+      <p className="eyebrow">AGENT TESTLAB / CONTROLLED RUNNER</p><h1>自动化测试工作台</h1>
+      <p className="heading-note">测试对象、执行工具与结果记录统一管理，预览不会调用模型。</p>
+    </section>
+    <div className="testing-tabs" role="tablist">
+      {([["workbench", "测试工作台"], ["runs", "运行记录"], ["badcases", "BadCase"], ["tools", "工具说明"]] as Array<[TestingTab, string]>).map(([id, label]) => <button key={id} className={initialTab === id ? "testing-tab active" : "testing-tab"} onClick={() => onTabChange(id)}>{label}<span>{id === "runs" ? runs.length : id === "badcases" ? badcaseRows.length : ""}</span></button>)}
+    </div>
+    {initialTab === "workbench" ? <>
+      <section className="testing-toolbar panel">
+        <label><span>测试对象</span><select value={target} onChange={(event) => setTarget(event.target.value)}>{catalog?.targets.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+        <label><span>测试层级</span><select value={level} onChange={(event) => setLevel(event.target.value)}><option value="all">全部层级</option><option value="unit">单元</option><option value="api">接口</option><option value="integration">集成</option><option value="agent">Agent</option><option value="performance">性能</option><option value="fault">故障</option></select></label>
+        <label><span>执行工具</span><select value={tool} onChange={(event) => setTool(event.target.value)}>{catalog?.tools.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+        <label><span>执行模式</span><select value={mode} onChange={(event) => setMode(event.target.value as "mock" | "local")}><option value="mock">Mock · 无模型调用</option><option value="local">本地注册执行</option></select></label>
+        <label><span>故障注入</span><select value={faultMode} onChange={(event) => setFaultMode(event.target.value)}><option value="none">正常路径</option><option value="timeout">模拟超时</option><option value="tool_error">模拟工具异常</option><option value="contract">模拟契约错误</option></select></label>
+      </section>
+      <section className="testing-layout">
+        <div className="panel testing-case-panel">
+          <div className="panel-heading"><div><p className="eyebrow">REGISTERED CASES</p><h2>{targetName} · {visibleCases.length} 个场景</h2></div><span className="testing-count">已选 {selected.length}</span></div>
+          {visibleCases.length ? <div className="testing-case-list">{visibleCases.map((item) => <button key={item.id} className={selected.includes(item.id) ? "testing-case selected" : "testing-case"} onClick={() => toggle(item.id)}><span className="case-check">{selected.includes(item.id) ? "✓" : ""}</span><span className="case-copy"><strong>{item.id} · {item.name}</strong><small>{item.scope} · {item.description}</small><em>{item.assertions.slice(0, 2).join(" · ")}</em></span><span className="case-level">{item.level}</span></button>)}</div> : <p className="panel-description">当前筛选下没有兼容用例，请更换测试工具或对象。</p>}
+          <div className="testing-actionbar"><div><b>{selected.length} 个用例</b><span>{mode === "mock" ? "不调用模型，结果写入本地 TestLab 目录" : "本地注册执行，仅运行允许的测试入口"}</span></div><button className="secondary" onClick={() => void doPreview()} disabled={!selected.length || pending}>{pending ? "处理中…" : "预览执行"}</button></div>
+        </div>
+        <aside className="panel testing-inspector"><p className="eyebrow">INSPECTOR</p><h2>执行检查</h2>{preview?.selection ? <div className="testing-preview"><span className="preview-status">预览已通过</span><dl><div><dt>对象</dt><dd>{targetName}</dd></div><div><dt>工具</dt><dd>{catalog?.tools.find((item) => item.id === tool)?.name}</dd></div><div><dt>预计耗时</dt><dd>{preview.selection.estimated_seconds}s</dd></div><div><dt>费用</dt><dd>{preview.selection.cost_mode}</dd></div></dl><button className="primary full-button" onClick={() => void doStart()} disabled={pending}>确认开始测试</button></div> : <><p className="panel-description">选择测试场景后先生成执行预览。预览会检查工具兼容性、运行模式和费用边界。</p><div className="inspector-rule"><span>当前目标</span><b>{targetName}</b></div><div className="inspector-rule"><span>当前工具</span><b>{catalog?.tools.find((item) => item.id === tool)?.name}</b></div><div className="inspector-rule"><span>执行约束</span><b>注册用例 · 固定目录</b></div></>}</aside>
+      </section>
+      {error && <p className="inline-error testing-error">{error}</p>}
+      {activeRun && <TestRunDetail run={activeRun} onCancel={() => void cancelTestRun(activeRun.id).then(setActiveRun).catch((reason) => setError(reason instanceof Error ? reason.message : "取消失败"))} />}
+    </> : initialTab === "runs" ? <TestRunsPanel runs={runs} activeRun={activeRun} onSelect={setActiveRun} onRefresh={refreshRuns} /> : initialTab === "badcases" ? <TestBadcasesPanel rows={badcaseRows} onRefresh={() => void loadTestBadCases().then(setBadcaseRows)} /> : <TestToolsPanel tools={catalog?.tools || []} />}
+  </>;
+}
+
+function TestRunDetail({ run, onCancel }: { run: TestRun; onCancel: () => void }) {
+  const status = statusLabel[run.status] || run.status;
+  return <section className="panel test-run-detail"><div className="panel-heading"><div><p className="eyebrow">RUN DETAIL / {run.id}</p><h2>执行结果</h2></div><div className={`test-run-status ${run.status}`}><i />{status}</div></div><div className="test-run-summary"><span>对象 <b>{run.target}</b></span><span>工具 <b>{run.tool}</b></span><span>进度 <b>{run.completed_cases}/{run.total_cases}</b></span><span>通过 <b>{run.summary.passed}</b></span><span>失败 <b>{run.summary.failed + run.summary.error}</b></span>{["queued", "running"].includes(run.status) && <button className="text-button danger-text" onClick={onCancel}>取消运行</button>}</div><div className="test-run-progress"><i style={{ width: `${run.progress}%` }} /></div>{run.results.length ? <div className="test-result-list">{run.results.map((result) => <div className="test-result" key={result.case_id}><span className={`result-dot ${result.status}`} /><strong>{result.case_id}</strong><span>{result.message}</span><small>{result.duration_ms} ms</small>{result.error_type && <em>{result.error_type}</em>}</div>)}</div> : <p className="panel-description">runner 正在准备执行…</p>}<details className="test-events"><summary>查看执行事件（{run.events.length}）</summary>{run.events.slice().reverse().map((event) => <div key={event.sequence}><b>#{event.sequence}</b><span>{event.message}</span><small>{new Date(event.at).toLocaleTimeString()}</small></div>)}</details></section>;
+}
+
+function TestRunsPanel({ runs, activeRun, onSelect, onRefresh }: { runs: TestRun[]; activeRun: TestRun | null; onSelect: (run: TestRun) => void; onRefresh: () => void }) {
+  return <section className="panel testing-record-panel"><div className="panel-heading"><div><p className="eyebrow">PERSISTED RUNS</p><h2>测试运行记录</h2></div><button className="secondary" onClick={onRefresh}><Icon name="refresh" />刷新</button></div>{runs.length ? <div className="testing-run-table"><div className="testing-run-head"><span>运行</span><span>对象 / 工具</span><span>结果</span><span>状态</span></div>{runs.map((run) => <button className={activeRun?.id === run.id ? "testing-run-row active" : "testing-run-row"} key={run.id} onClick={() => onSelect(run)}><span><strong>{run.id}</strong><small>{new Date(run.created_at).toLocaleString()}</small></span><span>{run.target}<small>{run.tool} · {run.mode}</small></span><span>{run.summary.passed}/{run.total_cases} 通过<small>{run.progress}% 完成</small></span><span className={`status ${run.status}`}><i />{statusLabel[run.status] || run.status}</span></button>)}</div> : <p className="panel-description">还没有测试运行。去工作台选择场景并执行一次 Mock 测试。</p>}{activeRun && <TestRunDetail run={activeRun} onCancel={() => undefined} />}</section>;
+}
+
+function TestBadcasesPanel({ rows, onRefresh }: { rows: TestBadCase[]; onRefresh: () => void }) {
+  return <section className="panel testing-record-panel"><div className="panel-heading"><div><p className="eyebrow">FAILURE REGISTRY</p><h2>BadCase</h2></div><button className="secondary" onClick={onRefresh}><Icon name="refresh" />刷新</button></div><p className="panel-description">失败运行自动形成候选记录，保留运行模式、失败类型和证据；确认后再纳入正式回归集。</p>{rows.length ? <div className="badcase-list">{rows.map((row) => <article className="badcase-row" key={row.id}><div><strong>{row.case_id}</strong><span>{row.target} · {row.tool}</span></div><em>{row.failure_type}</em><p>{row.summary}</p><small>{new Date(row.created_at).toLocaleString()} · {row.status}</small></article>)}</div> : <div className="empty-state"><span>✓</span><b>当前没有待复核 BadCase</b><p>可在工作台开启故障注入，验证失败记录链路。</p></div>}</section>;
+}
+
+function TestToolsPanel({ tools }: { tools: Array<{ id: string; name: string; kind: string; status: string; description: string; guide: string[]; asset?: string }> }) {
+  return <section className="panel testing-record-panel"><div className="panel-heading"><div><p className="eyebrow">TOOLBOX</p><h2>测试工具说明</h2></div></div><p className="panel-description">同一测试目录按职责选择工具，工具状态清晰区分可执行、可导出与待接入。导出资产不包含密钥。</p><div className="tool-guide-list">{tools.map((tool) => <article className="tool-guide" key={tool.id}><div className="tool-guide-head"><strong>{tool.name}</strong><span className={`tool-state ${tool.status}`}>{tool.status === "ready" ? "已接入" : tool.status === "export" ? "可导出" : tool.status === "adapter" ? "适配中" : "计划中"}</span></div><p>{tool.description}</p><ol>{tool.guide.map((step) => <li key={step}>{step}</li>)}</ol>{tool.asset && <a className="tool-asset" href={`/api/testing/assets/${tool.asset}`} download>下载无密钥示例 <span>↗</span></a>}</article>)}</div></section>;
 }
 
 function ProviderConsole({ providers, onBack, onRefresh }: { providers: ProviderResponse | null; onBack: () => void; onRefresh: () => void }) {

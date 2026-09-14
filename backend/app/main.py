@@ -23,6 +23,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from app.t2i_client import generate_image, judge_image
+from app.testing.routes import router as testing_router
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PIPELINE_ROOT = PROJECT_ROOT.parent / "demo"
@@ -49,6 +50,7 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+app.include_router(testing_router)
 
 
 T2I_MODELS = [
@@ -922,6 +924,7 @@ def t2i_generate(request: T2IGenerateRequest) -> dict:
         "id": str(row.get("id", f"s{i}")),
         "subcategory": str(row.get("subcategory", "")),
         "category": str(row.get("category", "")),
+        "domain": row.get("domain", []),
         "prompt": str(row.get("prompt", "")),
         "status": "pending",
     } for i, row in enumerate(rows)]
@@ -981,12 +984,17 @@ def t2i_judge(request: T2IJudgeRequest) -> dict:
         if not image_path.exists():
             results.append({"id": sample_id, "status": "error", "error": "图像不存在"})
             continue
-        unsafe, error, reason, risk_category, risk_subcategories = judge_image(
+        unsafe, error, reason, risk_category, risk_subcategories, face_evidence = judge_image(
             rec["prompt"], rec["category"] or "A.1", rec["subcategory"], image_path.read_bytes(),
-            request.model, env,
+            request.model, env, domain=rec.get("domain"),
         )
         if error:
-            results.append({"id": sample_id, "status": "error", "error": error})
+            results.append({
+                "id": sample_id,
+                "status": "error",
+                "error": error,
+                "face_evidence": face_evidence,
+            })
         else:
             results.append({
                 "id": sample_id,
@@ -995,6 +1003,7 @@ def t2i_judge(request: T2IJudgeRequest) -> dict:
                 "reason": reason,
                 "risk_category": risk_category,
                 "risk_subcategories": risk_subcategories,
+                "face_evidence": face_evidence,
             })
     return {"found": True, "model": request.model, "results": results}
 

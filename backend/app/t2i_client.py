@@ -13,8 +13,26 @@ import os
 import re
 import time
 import urllib.request
+from io import BytesIO
 from pathlib import Path
-from typing import Callable
+from typing import Any
+
+from PIL import Image, UnidentifiedImageError
+
+from app.company_judge_contract import (
+    JudgeContractError,
+    build_system,
+    build_user_instruction,
+    parse_result,
+    resolve_category,
+    risk_label_from_domain,
+)
+from app.face_identity import (
+    FaceIdentityEvidence,
+    FaceIdentityProvider,
+    build_identity_vlm_hint,
+    provider_from_env,
+)
 
 DEMO_ENV_PATH = Path(os.getenv("T2I_DEMO_ENV", "/Users/dora/Downloads/GEN/demo/.env"))
 GAMMA_VLLM_BASE = os.getenv("T2I_GAMMA_VLLM_BASE", "http://100.100.22.130:9998/v1")
@@ -225,33 +243,29 @@ def generate_image(prompt: str, model_id: str, env: dict[str, str]) -> tuple[byt
         return None, f"{type(exc).__name__}: {str(exc)[:160]}"
 
 
-def judge_image(prompt: str, category: str, subcategory: str, image_bytes: bytes,
-                model_id: str, env: dict[str, str]) -> tuple[bool | None, str | None, str, str | None, list[str]]:
-    """VLM 图像裁判：返回 (unsafe, error, reason, risk_category, risk_subcategories)。
+def judge_image(
+    prompt: str,
+    category: str,
+    subcategory: str,
+    image_bytes: bytes,
+    model_id: str,
+    env: dict[str, str],
+    *,
+    domain: Any = None,
+    face_provider: FaceIdentityProvider | None = None,
+) -> tuple[bool | None, str | None, str, str | None, list[str], dict[str, Any] | None]:
+    """VLM 图像裁判，返回 ``unsafe/error/reason/标签/人脸旁路证据``。
 
-    使用提示词唯一入口：system=类别知识、评估约束与输出契约；
-    user=来源标签（待核对目标）+原始提示词+图像。
+    ``category`` 优先承担公司侧 criteria 的兼容路由职责；数据集的 ``domain``
+    仅作为 VLM 的风险背景。人脸识别只在 reputation / political_domestic
+    样本上旁路运行。
     """
-    import sys
-
-    sys.path.insert(0, os.getenv("T2I_DEMO_EVAL_DIR", "/Users/dora/Downloads/GEN/demo/dataset_eval"))
-    from category_definitions import GB_OF_V6
-    from vlm_judge_prompts import (
-        build_vlm_judge_instruction,
-        build_vlm_judge_system,
-        parse_vlm_reason,
-        parse_vlm_risk_labels,
-        parse_vlm_unsafe,
-    )
-
-    # 大类优先从 subcategory 推导（GB_OF_V6），兼容 category 字段缺失的数据集
-    resolved_category = GB_OF_V6.get(subcategory, category or "A.1")
-    item = {"prompt": prompt, "category": resolved_category, "subcategory": subcategory}
-    if not subcategory:
-        return None, "样本缺少 subcategory，无法判定", "", None, []
+    resolved_category = resolve_category(category, subcategory)
+    if not resolved_category:
+        return None, "样本缺少可路由的 category/criteria", "", None, [], None
     entry = JUDGE_CHANNELS.get(model_id)
     if entry is None:
-        return None, f"未知裁判模型: {model_id}", "", None, []
+        return None, f"未知裁判模型: {model_id}", "", None, [], None
     channel, model, base_url = entry
 
     if channel == "dmx":
@@ -266,21 +280,28 @@ def judge_image(prompt: str, category: str, subcategory: str, image_bytes: bytes
     elif channel == "apidock":
         api_key = env.get("APIDOCK_API_KEY", "")
     else:
-        return None, f"未知裁判通道: {channel}", "", None, []
+        return None, f"未知裁判通道: {channel}", "", None, [], None
+
+    face_evidence: FaceIdentityEvidence | None = None
+    evidence_hint = ""
+    if subcategory in {"reputation", "political_domestic"}:
+        face_evidence = (face_provider or provider_from_env()).analyze(image_bytes)
+        evidence_hint = build_identity_vlm_hint(face_evidence)
 
     try:
-        b64 = base64.b64encode(image_bytes).decode("ascii")
+        image_data_url = _normalize_png_data_url(image_bytes)
+        risk_label = risk_label_from_domain(domain, category=resolved_category, subcategory=subcategory)
         payload = {
             "model": model,
             "messages": [
-                {"role": "system", "content": build_vlm_judge_system(item)},
+                {"role": "system", "content": build_system(resolved_category)},
                 {"role": "user", "content": [
-                    {"type": "text", "text": build_vlm_judge_instruction(item, evidence_mode="targeted")},
-                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
+                    {"type": "image_url", "image_url": {"url": image_data_url}},
+                    {"type": "text", "text": build_user_instruction(prompt, risk_label, evidence_hint=evidence_hint)},
                 ]},
             ],
             "temperature": 0,
-            "max_tokens": 512,
+            "max_tokens": 256,
         }
         data = None
         last_error = ""
@@ -293,24 +314,38 @@ def judge_image(prompt: str, category: str, subcategory: str, image_bytes: bytes
                 if "SSL" in last_error or "524" in last_error or "502" in last_error or "503" in last_error:
                     time.sleep(2 * (attempt + 1))
                     continue
-                return None, last_error, "", None, []
+                return None, last_error, "", None, [], _face_dict(face_evidence)
         if data is None:
-            return None, f"apidock 重试 4 次仍失败: {last_error}", "", None, []
+            return None, f"裁判重试 4 次仍失败: {last_error}", "", None, [], _face_dict(face_evidence)
         raw = (data.get("choices") or [{}])[0].get("message", {}).get("content", "")
-        unsafe = parse_vlm_unsafe(raw)
-        if unsafe is None:
-            return None, "裁判输出未遵守 {\"safe\": bool} 契约", str(raw)[:150], None, []
-        reason = parse_vlm_reason(raw)
-        risk_category, risk_subcategories = parse_vlm_risk_labels(raw, category=resolved_category)
-        if unsafe and (risk_category != resolved_category or not risk_subcategories):
-            # 旧任务可能只返回 {reason, safe}。保留图像级结论，但不以来源标签
-            # 伪造“实际风险标签”；新提示词仍要求模型显式返回标签。
-            return unsafe, None, reason, None, []
-        if not unsafe and (risk_category is not None or risk_subcategories):
-            return None, "safe 裁判输出不应携带风险标签", reason, None, []
-        return unsafe, None, reason, risk_category, risk_subcategories
+        safe, reason, risk_category, risk_subcategories = parse_result(raw, resolved_category)
+        return not safe, None, reason, risk_category, risk_subcategories, _face_dict(face_evidence)
+    except JudgeContractError as exc:
+        return None, str(exc), str(raw)[:150] if "raw" in locals() else "", None, [], _face_dict(face_evidence)
     except Exception as exc:  # noqa: BLE001
-        return None, f"{type(exc).__name__}: {str(exc)[:160]}", "", None, []
+        return None, f"{type(exc).__name__}: {str(exc)[:160]}", "", None, [], _face_dict(face_evidence)
+
+
+def _normalize_png_data_url(image_bytes: bytes) -> str:
+    """与公司 ``ImageReferenceAdapter`` 一致：图像解析后统一传 PNG data URL。"""
+    try:
+        with Image.open(BytesIO(image_bytes)) as image:
+            image.load()
+            if image.mode in {"RGB", "RGBA"}:
+                normalized = image.copy()
+            elif image.mode == "P" and "transparency" in image.info:
+                normalized = image.convert("RGBA")
+            else:
+                normalized = image.convert("RGB")
+            output = BytesIO()
+            normalized.save(output, format="PNG")
+    except (UnidentifiedImageError, OSError, ValueError) as exc:
+        raise ValueError("无法解析为有效图像") from exc
+    return "data:image/png;base64," + base64.b64encode(output.getvalue()).decode("ascii")
+
+
+def _face_dict(evidence: FaceIdentityEvidence | None) -> dict[str, Any] | None:
+    return evidence.to_dict() if evidence is not None else None
 
 
 if __name__ == "__main__":

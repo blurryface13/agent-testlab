@@ -1,6 +1,6 @@
 # 测试场景、工具与 CI 计划
 
-2026-09-15 · Codex（GPT-5）。场景设计，不代表已部署或测试通过。
+2026-09-15 · Codex（GPT-5）。目录与工具适配已落地；未执行的外部工具和真实模型场景仍明确标注。
 
 ## 1. 技术栈与职责
 
@@ -41,7 +41,7 @@
 | F-01 | 稳定性/依赖 | 模型超时、工具异常、网络中断 | 重试有上限；状态真实；恢复不重复计费或副作用 | 故障替身，不切断共享网络 |
 | E2E-01/02 | Agent 语义 | 见 Agent 评测计划 | 任务结果＋行为约束＋四维 Judge | 单独 live 或历史补评 |
 
-这些是场景族，不计为已经实现的用例数。既有 `backend/tests/test_t2i_company_contract.py` 是本地未提交的测试文件；仅作为接入候选，不默认提交其内容。
+Catalog 中的 10 项是可选择的场景族；首版 Mock runner 已覆盖目录校验、预检 hash、批次执行、故障注入、事件和 BadCase。`backend/tests/test_t2i_company_contract.py` 是用户已有的业务合同测试，保持其内容和提交边界；新增 `test_testing_workbench.py` 验证工作台自身合同。JMeter、Newman、Jenkins 资产已提供，但未宣称外部工具在当前主机已连接。
 
 ## 3. 工具使用教学设计
 
@@ -61,7 +61,7 @@
 
 提交后只跑无付费冒烟；定时跑扩展 Mock 回归。live Agent、真实 T2I 和压测各为显式触发的独立 job，带费用/负载确认。内网不可达显示 blocked，不执行隐式替代目标。
 
-目标命令形状（下列测试目录、collection 与 JMX 是计划文件，当前未创建，不应直接执行）：
+目标命令形状（Collection、JMX 与 Jenkinsfile 已创建；执行前仍需确认本机已安装对应工具）：
 
 ```sh
 pytest tests/unit tests/api -m "not live and not performance" --junitxml=artifacts/junit.xml --alluredir=artifacts/allure-results

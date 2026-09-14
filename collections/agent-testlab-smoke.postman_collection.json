@@ -1,0 +1,54 @@
+{
+  "info": {
+    "name": "Agent TestLab · Smoke",
+    "description": "No-secret smoke collection for the TestLab control plane. Fill only the local base_url variable.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://127.0.0.1:8010" },
+    { "key": "preview_hash", "value": "" },
+    { "key": "run_id", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "request": { "method": "GET", "header": [], "url": "{{base_url}}/api/testing/health" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('health is ok', function () { pm.response.to.have.status(200); });", "pm.test('status field exists', function () { pm.expect(pm.response.json().status).to.eql('ok'); });"] } }]
+    },
+    {
+      "name": "Catalog",
+      "request": { "method": "GET", "header": [], "url": "{{base_url}}/api/testing/catalog" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('catalog is available', function () { pm.response.to.have.status(200); });", "pm.test('registered cases are present', function () { pm.expect(pm.response.json().cases.length).to.be.above(0); });"] } }]
+    },
+    {
+      "name": "Preview mock run",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"target\": \"t2i-safety\",\n  \"case_ids\": [\"A-T02\"],\n  \"tool\": \"requests\",\n  \"mode\": \"mock\",\n  \"fault_mode\": \"none\"\n}" },
+        "url": "{{base_url}}/api/testing/runs/preview"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('preview accepted', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().accepted).to.eql(true); });", "pm.collectionVariables.set('preview_hash', pm.response.json().preview_hash);"] } }]
+    },
+    {
+      "name": "Start mock run",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"target\": \"t2i-safety\",\n  \"case_ids\": [\"A-T02\"],\n  \"tool\": \"requests\",\n  \"mode\": \"mock\",\n  \"fault_mode\": \"none\",\n  \"preview_hash\": \"{{preview_hash}}\"\n}" },
+        "url": "{{base_url}}/api/testing/runs"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('run accepted', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().accepted).to.eql(true); });", "pm.collectionVariables.set('run_id', pm.response.json().run.id);"] } }]
+    },
+    {
+      "name": "Run result",
+      "request": { "method": "GET", "header": [], "url": "{{base_url}}/api/testing/runs/{{run_id}}" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('run can be read', function () { pm.response.to.have.status(200); });", "pm.test('result has summary', function () { pm.expect(pm.response.json().summary).to.be.an('object'); });"] } }]
+    },
+    {
+      "name": "Prometheus metrics",
+      "request": { "method": "GET", "header": [], "url": "{{base_url}}/api/testing/metrics" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('metrics endpoint responds', function () { pm.response.to.have.status(200); });"] } }]
+    }
+  ]
+}

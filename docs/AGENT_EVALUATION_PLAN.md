@@ -1,6 +1,6 @@
 # 科研 Agent：Monitor 与端到端评测
 
-2026-09-15 · Codex（GPT-5）。仅设计；本轮未新增真实研究或裁判调用。
+2026-09-15 · Codex（GPT-5）。接入合同已实现；本轮未新增真实研究或裁判调用。
 
 ## 1. 接入方式
 
@@ -95,7 +95,7 @@
 
 ## 5. Monitor
 
-Asteria API 和 worker 为不同进程，不能直接依赖 EchoMind 的单进程对象统计。新增事件聚合 adapter，从 durable events 按序号增量读取，保存消费游标；每个完成事件只计一次。普通 Chat 也需记录标准回合事件，否则不会被 Monitor 覆盖。
+Asteria API 和 worker 为不同进程，不能直接依赖 EchoMind 的单进程对象统计。当前接入先由 adapter 聚合已持久化的 `results`/`traces`，避免跨进程内存依赖；TestLab 侧的运行事件按序号增量读取。下一步再把 Asteria durable events 的消费游标独立持久化，确保每个完成事件只计一次。普通 Chat 也需记录标准回合事件，否则不会被 Monitor 覆盖。
 
 指标：Agent/工具调用次数、传输成功与业务成功分别统计、平均活跃时延、连续失败次数、当前队列与运行数、人工等待、真实 usage。HTTP 接口时延与分钟级研究总耗时分开。
 
@@ -105,7 +105,13 @@ Asteria API 和 worker 为不同进程，不能直接依赖 EchoMind 的单进�
 
 Prometheus 直方图 observe 每次完成的真实耗时，不反复采样累计平均值。labels 限定 tool/capability/status，不放用户、完整 query、run_id 或密钥。`/monitor`、`/metrics` 仅内网/认证访问；结构化日志用 run/turn/span ID 关联，敏感正文另受权限管理。
 
-## 6. 验证清单
+## 6. 当前接入状态
+
+- Asteria 已提供 `/api/evaluation/quality/prompt`、`/quality/judge`、`/quality` 和 `/monitor`。Judge 采用严格 JSON 合同，缺字段/越界/非法 JSON 均记录 `judge_error`，不默认补 0.5。
+- Asteria 的 Monitor 从持久化 `results`/`traces` 聚合调用次数、成功率、平均/P95 延迟、连续失败和工具错误；样本不足 10 次显示 `unknown`，当前只返回 `observation_only`，不替换现有 Coordinator。
+- TestLab 提供相同评测侧的 `agent-eval` 用例、Mock 故障注入和运行记录；真实科研 Coordinator 的 live/rescore 需要独立认证、模型和证据环境，不把 Mock 结果当作效果数据。
+
+## 7. 验证清单
 
 - 回合经过真实入口，history/memory/project 归属进入快照，报告追问不误触发新研究。
 - 固定替身测试 3 次失败、健康实例选择、冷启动与恢复；不靠真实接口人为消耗费用制造故障。

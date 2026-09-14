@@ -14,7 +14,7 @@ product
 
 ### 2026-09-15 扩展定位（设计阶段）
 
-项目更名 Agent TestLab，在既有 T2I 评测模块中加入自动化测试工作台。用户按对象、测试类型、工具与场景选择执行，查看请求、断言、失败证据及工具操作说明。pytest/Requests、Postman/Newman、JMeter 与 Jenkins 承担不同执行职责；科研 Agent 的 Monitor 与 LLM Judge 在 Asteria 侧接入，本工作台汇总结果。完整范围见 spec.md，界面约束见 DESIGN.md；新增功能尚未实现。
+项目更名 Agent TestLab，在既有 T2I 评测模块中加入自动化测试工作台。用户按对象、测试类型、工具与场景选择执行，查看预检、断言、失败证据及工具操作说明。pytest/Requests、Postman/Newman、JMeter 与 Jenkins 承担不同执行职责；科研 Agent 的 Monitor 与严格 LLM Judge 合同在 Asteria 侧接入，本工作台负责受控执行和结果汇总。完整范围见 spec.md，界面约束见 DESIGN.md；当前首版控制面、Mock runner、工具资产与 Docker 部署已实现。
 
 ## Brand Personality
 

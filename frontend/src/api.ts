@@ -218,7 +218,14 @@ export async function loadPrompts(node: string, datasetId?: string, subcategory?
 export type T2ISample = { id: string; subcategory?: string; category?: string; prompt?: string; status: "pending" | "success" | "error" | "cancelled"; error?: string; img?: string; size_kb?: number };
 export type T2IRun = { id: string; status: "running" | "completed"; model: string; done: number; total: number; output_dir: string; samples: T2ISample[] };
 export type T2IStartResult = { accepted: boolean; message: string; run?: T2IRun };
-export type T2IJudgeResult = { id: string; status: "done" | "error"; unsafe?: boolean; reason?: string; error?: string };
+export type FaceEvidence = {
+  status: "not_configured" | "undetected" | "detected" | "out_of_domain" | "error";
+  faces?: Array<{ candidate_id?: string | null; display_name?: string | null; risk_profile?: string | null; match_status: "candidate_match" | "no_match" | "review_required"; top1_score?: number | null; top1_margin?: number | null }>;
+  model_version?: string | null;
+  registry_version?: string | null;
+  detail?: string | null;
+};
+export type T2IJudgeResult = { id: string; status: "done" | "error"; unsafe?: boolean; reason?: string; error?: string; risk_category?: string | null; risk_subcategories?: string[]; face_evidence?: FaceEvidence | null };
 export type T2IJudgeResponse = { found: boolean; model?: string; results?: T2IJudgeResult[]; message?: string };
 
 export async function startT2IGenerate(payload: { dataset_id: string; model: string; subcategory?: string; limit: number }): Promise<T2IStartResult> {
@@ -250,7 +257,7 @@ export async function judgeT2I(payload: { run_id: string; model: string; sample_
 }
 
 export type JudgeDataset = { id: string; name: string; count: number; path: string };
-export type JudgeVerdict = { unsafe: boolean | null; reason?: string; error?: string; risk_category?: string; risk_subcategories?: string[] };
+export type JudgeVerdict = { unsafe: boolean | null; reason?: string; error?: string; risk_category?: string; risk_subcategories?: string[]; face_evidence?: FaceEvidence | null };
 export type JudgeSample = { id: string; subcategory?: string; prompt?: string; judges: Record<string, JudgeVerdict> };
 export type JudgeStats = { per_judge: Record<string, { total: number; unsafe: number; asr: number }>; complete: number; agree: number; agree_rate: number; disagree_count: number };
 export type JudgeRun = { id: string; task_name: string; source_model?: string; status: "running" | "completed"; judges: string[]; done: number; total: number; output_dir: string; stats: JudgeStats; samples: JudgeSample[]; disagree: JudgeSample[] };
@@ -358,4 +365,101 @@ export async function loadPolishRun(runId: string): Promise<PolishRun> {
   const payload = await response.json() as { found: boolean; message?: string; run?: PolishRun };
   if (!payload.found || !payload.run) throw new Error(payload.message || "Polish 任务不存在");
   return payload.run;
+}
+
+export type TestTarget = { id: string; name: string; description: string; status: string; default_mode: string };
+export type TestTool = { id: string; name: string; kind: string; status: string; description: string; guide: string[]; asset?: string };
+export type TestCase = {
+  id: string;
+  name: string;
+  target: string;
+  level: string;
+  tools: string[];
+  scope: string;
+  precondition: string;
+  assertions: string[];
+  description: string;
+  tool_details?: TestTool[];
+};
+export type TestCatalog = { cases: TestCase[]; targets: TestTarget[]; tools: TestTool[] };
+export type TestResult = {
+  case_id: string;
+  status: "passed" | "failed" | "error" | "skipped";
+  error_type?: string | null;
+  message: string;
+  duration_ms: number;
+  assertions: string[];
+  evidence: Record<string, unknown>;
+};
+export type TestEvent = { sequence: number; at: string; kind: string; message: string; case_id?: string; status?: string };
+export type TestRun = {
+  id: string;
+  target: string;
+  tool: string;
+  mode: "mock" | "local";
+  fault_mode: "none" | "timeout" | "tool_error" | "contract";
+  status: "queued" | "running" | "completed" | "failed" | "cancelled";
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  case_ids: string[];
+  total_cases: number;
+  completed_cases: number;
+  progress: number;
+  results: TestResult[];
+  events: TestEvent[];
+  sequence: number;
+  summary: { passed: number; failed: number; error: number; skipped: number };
+  runner_version: string;
+};
+export type TestPreview = {
+  accepted: boolean;
+  message: string;
+  preview_hash?: string;
+  selection?: { target: string; tool: string; mode: string; fault_mode: string; case_ids: string[]; case_count: number; estimated_seconds: number; cost_mode: string; output_dir: string };
+};
+export type TestBadCase = { id: string; run_id: string; case_id: string; target: string; tool: string; status: string; failure_type: string; summary: string; evidence: Record<string, unknown>; created_at: string };
+
+export async function loadTestCatalog(filters: { target?: string; level?: string; tool?: string } = {}): Promise<TestCatalog> {
+  const query = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => { if (value) query.set(key, value); });
+  const response = await fetch(`/api/testing/catalog${query.size ? `?${query.toString()}` : ""}`);
+  if (!response.ok) throw new Error("测试目录读取失败");
+  return await response.json() as TestCatalog;
+}
+
+export async function previewTestRun(payload: { target: string; case_ids: string[]; tool: string; mode: "mock" | "local"; fault_mode: string }): Promise<TestPreview> {
+  const response = await fetch("/api/testing/runs/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+  if (!response.ok) throw new Error("测试预览失败");
+  return await response.json() as TestPreview;
+}
+
+export async function startTestRun(payload: { target: string; case_ids: string[]; tool: string; mode: "mock" | "local"; fault_mode: string; preview_hash?: string }): Promise<{ accepted: boolean; message: string; run?: TestRun }> {
+  const response = await fetch("/api/testing/runs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+  if (!response.ok) throw new Error("测试任务提交失败");
+  return await response.json() as { accepted: boolean; message: string; run?: TestRun };
+}
+
+export async function loadTestRuns(): Promise<TestRun[]> {
+  const response = await fetch("/api/testing/runs");
+  if (!response.ok) throw new Error("测试运行记录读取失败");
+  return (await response.json() as { runs: TestRun[] }).runs || [];
+}
+
+export async function loadTestRun(runId: string): Promise<TestRun> {
+  const response = await fetch(`/api/testing/runs/${encodeURIComponent(runId)}`);
+  if (!response.ok) throw new Error("测试运行读取失败");
+  return await response.json() as TestRun;
+}
+
+export async function cancelTestRun(runId: string): Promise<TestRun> {
+  const response = await fetch(`/api/testing/runs/${encodeURIComponent(runId)}/cancel`, { method: "POST" });
+  if (!response.ok) throw new Error("取消测试失败");
+  return await response.json() as TestRun;
+}
+
+export async function loadTestBadCases(): Promise<TestBadCase[]> {
+  const response = await fetch("/api/testing/badcases");
+  if (!response.ok) throw new Error("BadCase 读取失败");
+  return (await response.json() as { badcases: TestBadCase[] }).badcases || [];
 }

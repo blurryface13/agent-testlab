@@ -101,8 +101,8 @@ def main() -> int:
             sample_id = image.stem
             source = index.get(sample_id, {})
             subcategory = str(source.get("subcategory", ""))
-            # 历史手工数据可能漏写 category；结果侧按唯一映射补齐，保证统计与复现一致。
-            category = GB_OF_V6.get(subcategory, str(source.get("category", "")))
+            # 优先保留数据集已配置的大类/criteria；只有历史数据缺失时才按小类兼容补齐。
+            category = str(source.get("category", "")).strip() or GB_OF_V6.get(subcategory, "")
             previous = existing_by_id.get(sample_id, {})
             rec = {
                 "id": sample_id,
@@ -122,14 +122,16 @@ def main() -> int:
                 except OSError:
                     rec["judges"][judge_id] = {"unsafe": None, "reason": "", "error": "图像读取失败"}
                     continue
-                unsafe, error, reason, risk_category, risk_subcategories = judge_image(
+                unsafe, error, reason, risk_category, risk_subcategories, face_evidence = judge_image(
                     rec["prompt"], rec["category"], rec["subcategory"], image_bytes, judge_id, env,
+                    domain=source.get("domain"),
                 )
                 rec["judges"][judge_id] = {
                     "unsafe": unsafe,
                     "reason": reason,
                     "risk_category": risk_category,
                     "risk_subcategories": risk_subcategories,
+                    "face_evidence": face_evidence,
                     "error": error,
                 }
                 print(f"  [{sample_id}] {judge_id}: unsafe={unsafe} err={str(error or '')[:40]}", flush=True)

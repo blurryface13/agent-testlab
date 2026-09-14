@@ -1,17 +1,17 @@
 # Agent TestLab 开发规格
 
-日期：2026-09-15。作者：Codex（GPT-5）。状态：设计稿，尚未实现新增测试系统。
+日期：2026-09-15。作者：Codex（GPT-5）。状态：控制面与部署包已实现；真实模型、外部工具执行仍按显式适配边界开放。
 
 ## 1. 目标与边界
 
 将现有个人 T2I Safety 控制台扩展为自动化测试工作台。传统测试负责接口、状态、权限、异常和性能；Agent 评测负责意图、执行行为和交付质量。两者共用用例目录、批次记录、报告入口和 BadCase 流程，不混用通过率分母。
 
-本轮只交付规格、界面设计、两组 Agent 测试指令、历史 BadCase 目录和仓库更名。不发起真实模型调用、不安装 Jenkins、不运行压测、不修改科研编排、不复制公司代码或私有数据。
+本轮交付自动化测试工作台首版、工具适配资产、Docker 部署包、两组 Agent 测试指令和 Asteria 评测合同。不发起真实模型调用、不安装 Jenkins、不运行真实压测、不修改科研主编排、不复制公司代码或私有数据。
 
 角色边界：
 
 - Asteria：被测科研系统，接入 EchoMind 启发的 Monitor 和独立评分服务，保留真实 Coordinator、持久化研究 worker、人工审批与技能选择。
-- Agent TestLab：测试控制台，承载 pytest、Postman、JMeter、Jenkins 的任务选择与结果汇总；读取 Asteria 评测结果，不在前端再实现另一套评分。
+- Agent TestLab：测试控制台，承载 pytest、Postman、JMeter、Jenkins 的任务选择与结果汇总；通过后续受控适配口读取 Asteria 评测结果，不在前端再实现另一套评分。
 - QuinClaude：运行时测试场景来源。通过单独 adapter 测试，不假定其代码已经成为 Asteria 的真实依赖。
 - T2I：现有业务模块，也是合同、数据质量、生成及裁判流程的测试对象。
 - 公司仓库与相邻 demo：不纳入本轮写入、复制、发布或压测范围。
@@ -20,9 +20,9 @@
 
 | 系统 | 已核对 | 本轮不宣称已完成 |
 | --- | --- | --- |
-| T2I | FastAPI、React/Vite，数据集/生图/裁判入口；本地存在 unittest＋Mock 合同测试 | 通用测试 runner、Jenkins、Postman Collection、JMeter 测试计划 |
-| Asteria | PostgreSQL Run/Event/审批/产物，Coordinator，规则评测及 BadCase 页面 | 当前自主入口的完整 LLM Judge、历史语义补评、Monitor 路由反馈 |
-| 旧评测 adapter | basic、multi_agent、multi_agent_perspectives 工作流 | 不等于通过当前 Coordinator 的端到端测试 |
+| T2I | FastAPI、React/Vite，数据集/生图/裁判入口；本地存在 unittest＋Mock 合同测试；已接入 TestLab runner | 外部模型和真实负载成绩 |
+| Asteria | PostgreSQL Run/Event/审批/产物，Coordinator，规则评测及 BadCase 页面；已接入严格 Judge/Monitor 合同 | live provider、历史语义补评、Monitor 路由反馈闭环 |
+| 旧评测 adapter | basic、multi_agent、multi_agent_perspectives 工作流 | 不等于通过当前 Coordinator 的端到端测试，需由 TestLab 受控调用 |
 | EchoMind | Python evaluator、PerformanceMonitor、同类实例路由评分、四维 Judge | 原始代码不等于已迁入 Asteria；五组内置客服用例不计入本项目 |
 
 T2I 工作区已有未提交代码，保持原样；当前设计与实施不能顺手暂存这些修改。QuinClaude 的历史 272 条测试也不得直接作为新系统已接入数量。
@@ -68,22 +68,24 @@ T2I 工作区已有未提交代码，保持原样；当前设计与实施不能�
 
 TestLab 元数据使用独立 PostgreSQL database/schema 与凭据，不写 Asteria 业务表；报告置于独立受控目录。优先复用 PostgreSQL 实例，不新引入另一套主数据库。Redis 可作缓存，不承担唯一运行记录。实际迁移另开实施任务。
 
-### 4.2 计划 API（均未实现）
+### 4.2 已实现 API 与保留适配口
 
-- GET `/api/testing/catalog`：合法的类型、工具及场景组合。
-- GET `/api/testing/targets`：可用目标与脱敏环境状态。
-- POST `/api/testing/runs/preview`：解析用例、权限、预算与执行命令，无模型调用或写业务数据。
-- POST `/api/testing/runs`：携带预览摘要、幂等键，确认启动。
-- GET `/api/testing/runs/{id}` 与 `/events?after=`：状态与增量日志。
-- POST `/api/testing/runs/{id}/cancel`：取消本次执行，不停止共享服务。
-- GET `/api/testing/runs/{id}/artifacts/{artifact_id}`：校验所有者后下载。
-- GET `/api/testing/cases/{id}/exports/{format}`：导出 Postman Collection/environment 模板或已审查 JMX，禁止包含密钥。
+- GET `/api/testing/catalog`：返回合法目标、工具和用例组合。
+- GET `/api/testing/targets`、`/tools`：返回目标与工具的脱敏状态、操作指引。
+- POST `/api/testing/runs/preview`：解析用例、兼容性、执行模式和预算提示；不调用模型、不写业务产物，并返回配置摘要 hash。
+- POST `/api/testing/runs`：必须携带预览 hash，启动受控 runner；不接受任意 Shell、脚本路径或 URL。
+- GET `/api/testing/runs/{id}` 与 `/events?after=`：读取批次状态、断言结果和增量事件。
+- POST `/api/testing/runs/{id}/cancel`：请求取消后续用例，不停止共享服务。
+- GET `/api/testing/badcases`：从失败/错误结果生成候选 BadCase，保留故障类型与证据。
+- GET `/api/testing/health`、`/metrics`：查看存储/Redis 降级状态和 Prometheus 指标。
+- Postman Collection、JMeter JMX、Jenkinsfile 已作为仓库内无密钥适配资产提供；网页不直接遥控外部桌面工具。
+- 规划中的 artifact 下载、用户所有权校验和外部 Jenkins 回调，仍需接入实际认证后开放。
 
 Runner 只接受注册的执行器、case_id 和受控参数；不接受前端任意 shell、任意脚本路径、任意 URL。子进程使用参数数组、固定目录、时限与取消清理。Jenkins job 使用白名单，凭据后端持有，回调验签且幂等。内网目标仅由对应网络内授权 runner 访问，不能搭建任意代理。
 
 ## 5. 环境与上线
 
-先在 Mac 使用 Mock 模型及独立测试数据跑通；个人 PC 可用 Docker Compose 承载 TestLab、PostgreSQL 和 runner/Jenkins。无需公网域名或 GPU。
+先在 Mac 使用 Mock 模型及独立测试数据跑通；个人 PC 可用 Docker Compose 承载 TestLab、JSON 事实源、Redis 和受控 runner。PostgreSQL/Jenkins 作为后续多人或 CI 部署适配，不随首版控制面默认启动。无需公网域名或 GPU。
 
 数据库、文件卷和测试用户与日常使用隔离。T2I 当前依赖相邻 demo 的环境及产物，第一笔实施必须取消测试对其真实目录的默认写入，不复制密钥。真实模型网络默认禁止，仅 explicit live 配置允许。
 
@@ -95,11 +97,11 @@ JMeter 从独立机器发压；控制面接口压测使用模型替身，低并�
 
 | 阶段 | 实施范围 | 完成证据 |
 | --- | --- | --- |
-| P0 隔离与合同 | 测试配置、临时数据目录、目标白名单、来源许可核对 | 零凭据导出、零 demo 写入、未授权目标拒绝测试 |
-| P1 基础自动化 | pytest＋Requests、现有 T2I 单元测试收集、Allure、Postman 导出 | 一条 Mock 业务链＋真实只读 API 冒烟，结果可追溯 |
-| P2 科研评测 | EchoMind adapter、Monitor、两组用例、历史补评 | 两组各有真实 run/trace/score；失败也完整展示，不要求造出 BadCase |
-| P3 控制台 | 按 DESIGN.md 接入类型/工具/内容选择与结果详情 | 真实请求、真实日志，未实现工具明确禁用 |
-| P4 CI 与性能 | Jenkins 冒烟/定时回归、Newman、JMeter | build URL、Allure、脱敏 JTL、负载与环境配置、故障复测 |
+| P0 隔离与合同 | 测试配置、临时数据目录、目标白名单、来源许可核对 | 已完成：runner 仅接受注册目标/用例/工具；JSON 事实源与可选 Redis 分离 |
+| P1 基础自动化 | pytest＋Requests、T2I 合同测试接入、Postman 资产 | 已完成首版：Mock 业务链、预览 hash、运行事件、取消、BadCase 和无密钥 Collection |
+| P2 科研评测 | EchoMind adapter、Monitor、两组用例、历史补评 | 已完成接入合同：Asteria 提供严格 Judge 解析和 Monitor 观测 API；真实 Coordinator run/score 仍需配置环境后执行 |
+| P3 控制台 | 按 DESIGN.md 接入类型/工具/内容选择与结果详情 | 已完成首版：测试工作台、运行记录、BadCase、工具说明和响应式布局 |
+| P4 CI 与性能 | Jenkins 冒烟/定时回归、Newman、JMeter | 已提供：Jenkinsfile、Postman Collection、JMeter JMX；外部服务连接和真实压测待部署环境验证 |
 
 每阶段记录代码 revision、环境、命令、退出状态、产物与已知边界。无实测不填写简历提升比例；先两组不宣称五组。5% 为基线退化规则，0.75 为质量阈值，均不是已达效果。
 
@@ -117,3 +119,11 @@ JMeter 从独立机器发压；控制面接口压测使用模型替身，低并�
 - [测试目录与工具操作](docs/TEST_CATALOG.md)
 - [前端设计](DESIGN.md)
 - [开发节点](docs/DEVELOPMENT_LOG.md)
+
+## 9. 本轮实现清单（2026-09-15）
+
+- 后端新增 `app.testing` 目录：数据驱动 Catalog、受控 Mock/pytest runner、预览 hash、防任意命令执行、持久运行记录、增量事件和 BadCase 候选。
+- 前端新增 Agent TestLab 测试工作台，支持目标/层级/工具/执行模式/故障注入选择、预览后启动、实时轮询、结果断言、事件和取消。
+- 新增 Redis best-effort 事件镜像与 Prometheus 指标；Redis 不可用时不影响 JSON 事实源。
+- 新增 Postman/Newman Collection、JMeter 控制面 JMX、Jenkins 冒烟流水线和 Docker Compose（FastAPI + Nginx + Redis）。
+- Asteria 新增 EchoMind 风格的严格 Judge 合同与持久结果 Monitor 聚合，默认 `observation_only`，样本不足时为 `unknown`，不直接改写 Coordinator 路由。
