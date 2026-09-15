@@ -14,6 +14,7 @@
 - **Agent 评测**：通过结构化 Trace 检查意图路由、工具调用、任务状态和输出质量，支持四维 LLM-as-Judge、版本回归与 BadCase 归档。
 - **运行可观测**：记录每次运行的目标版本、环境、耗时、通过/失败/错误/跳过状态和可脱敏产物；Monitor 指标与质量评分分开统计。
 - **本地部署**：提供 Docker Compose 配置，可在 Windows＋Docker Desktop 或个人 PC 上先以 Mock 模式启动；Asteria 通过 `ASTERIA_BASE_URL` 做只读 API 冒烟，源码合同测试通过 `ASTERIA_PROJECT_ROOT` 接入。
+- **CI/CD 学习**：提供 Jenkins LTS Pipeline，默认跑合同回归，可选参数化 Newman 接口重放与 JMeter 只读压测，并归档 JUnit/性能产物；macOS 当前使用原生 Jenkins，Docker Compose 作为迁移用控制器配置。
 
 ## 快速开始
 
@@ -44,6 +45,20 @@ docker compose up --build
 ```
 
 打开 <http://127.0.0.1:4173>。默认不挂载个人密钥、不连接外部模型；如需接入本地服务，在部署机通过未提交的 `.env` 或 compose 环境变量配置，并先阅读[部署说明](docs/DEPLOYMENT.md)。
+
+Jenkins 当前在 macOS 使用 Homebrew 服务运行：
+
+```bash
+brew services start jenkins-lts
+```
+
+打开 <http://127.0.0.1:8080>，在 Jenkins 中创建 Pipeline from SCM，指向本仓库的 `Jenkinsfile`。首次先运行 `workbench-contract`；Asteria、Newman 和 JMeter 均通过参数显式开启。Windows + Docker Desktop 可按[部署说明](docs/DEPLOYMENT.md)运行独立 Jenkins 控制器，并为 Pipeline 配置带 Python/Newman/JMeter 的 agent。
+
+可选的 Docker Jenkins 控制器（当前 macOS 的 8080 已被原生 Jenkins 占用，因此映射到 8081）：
+
+```bash
+docker compose -f docker-compose.ci.yml up -d
+```
 
 ## 文档
 

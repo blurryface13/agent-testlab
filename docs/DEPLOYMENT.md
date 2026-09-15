@@ -46,6 +46,31 @@ docker compose stop
 docker compose start
 ```
 
+### Jenkins CI/CD
+
+Jenkins 与 TestLab 控制面分开部署，避免启动测试工作台时隐式启动 CI 管理端。当前 macOS 已用 Homebrew 安装并启动 Jenkins LTS，直接访问 `http://127.0.0.1:8080`；首次安装建议插件后，创建 `Pipeline from SCM` 指向本仓库 `main` 分支的 `Jenkinsfile`。
+
+Windows + Docker Desktop 的迁移路径是启动独立 Jenkins 控制器：
+
+```powershell
+docker compose -f docker-compose.ci.yml up -d
+docker compose -f docker-compose.ci.yml logs jenkins
+```
+
+当前 compose 为官方 Jenkins LTS JDK 21 控制器，macOS 为避免与原生 Jenkins 冲突映射到 `http://127.0.0.1:8081`；Windows 单独运行时可将端口改为 `8080:8080`。初次密码可从容器日志或 Jenkins 数据卷中的 `secrets/initialAdminPassword` 获取。安装建议选择基础 Pipeline、Git、JUnit 等插件，然后创建 `Pipeline from SCM` 指向本仓库 `main` 分支的 `Jenkinsfile`。
+
+控制器不把 Python、Newman、JMeter 自动塞进 Jenkins 镜像。Pipeline 应绑定一个带这些工具的 agent；当前 macOS 的原生 Jenkins 直接使用已安装的 Python、Newman 和 JMeter，Windows 可在 Docker agent 或节点上按同样方式安装。这样控制器只负责调度、权限和归档，测试工具在执行节点运行。
+
+第一条流水线只选择 `TARGET_PROFILE=workbench-contract`、保持 `RUN_NEWMAN=false` 和 `RUN_JMETER=false`，先学习 checkout、虚拟环境、pytest、构建失败和 JUnit 归档。确认无误后，再单独打开 `RUN_NEWMAN` 做 Asteria 只读接口重放；JMeter 只在隔离目标上显式打开，并从构建产物查看 JTL/HTML。Asteria 合同测试需要一个带 Asteria 依赖的 Jenkins agent，不能把宿主机路径直接填给容器内的 Python。
+
+停止 Docker Jenkins 但保留配置：
+
+```powershell
+docker compose -f docker-compose.ci.yml stop
+```
+
+只有明确要清除 Jenkins 用户、插件和 Job 时才执行 `docker compose -f docker-compose.ci.yml down -v`。
+
 只有在明确需要清理所有本地运行记录时才执行 `docker compose down -v`；这会删除 Docker 卷中的 TestLab 结果和 Redis 镜像数据。
 
 ## 3. Asteria 主测试对象

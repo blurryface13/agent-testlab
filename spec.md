@@ -101,7 +101,7 @@ JMeter 从独立机器发压；控制面接口压测使用模型替身，低并�
 | P1 基础自动化 | pytest＋Requests、T2I 合同测试接入、Postman 资产 | 已完成首版：Mock 业务链、预览 hash、运行事件、取消、BadCase 和无密钥 Collection |
 | P2 科研评测 | EchoMind adapter、Monitor、两组用例、历史补评 | 已完成接入合同：Asteria 提供严格 Judge 解析和 Monitor 观测 API；TestLab 已登记 Asteria 合同与只读 API runner；真实 Coordinator run/score 仍需配置环境后执行 |
 | P3 控制台 | 按 DESIGN.md 接入类型/工具/内容选择与结果详情 | 已完成首版：测试工作台、运行记录、BadCase、工具说明和响应式布局 |
-| P4 CI 与性能 | Jenkins 冒烟/定时回归、Newman、JMeter | Jenkinsfile、Postman Collection、JMeter JMX 已提供；下一步必须在部署机完成 Jenkins Job、JUnit 归档和隔离性能验证 |
+| P4 CI 与性能 | Jenkins 冒烟/定时回归、Newman、JMeter | Jenkinsfile、Jenkins 控制器 Compose、Postman Collection、JMeter JMX 已提供；当前 macOS 原生 Jenkins 已安装，下一步完成 Jenkins Job、JUnit 归档和隔离性能验证 |
 
 每阶段记录代码 revision、环境、命令、退出状态、产物与已知边界。无实测不填写简历提升比例；先两组不宣称五组。5% 为基线退化规则，0.75 为质量阈值，均不是已达效果。
 
@@ -129,3 +129,4 @@ JMeter 从独立机器发压；控制面接口压测使用模型替身，低并�
 - Asteria 新增 EchoMind 风格的严格 Judge 合同与持久结果 Monitor 聚合，默认 `observation_only`，样本不足时为 `unknown`，不直接改写 Coordinator 路由。
 - Asteria 成为 TestLab 默认目标：`tests/test_testlab_contract.py` 覆盖 Coordinator/评测路由、研究请求凭据边界、Judge/Monitor 合同和异步意图结构；TestLab `backend/tests/test_asteria_api_smoke.py` 通过 Requests 只读检查运行中的 OpenAPI 与 Agent Discovery。
 - 新增无密钥 `collections/asteria-agent-smoke.postman_collection.json`、只读 `performance/asteria-readonly.jmx` 和可选 Asteria 合同分支的 `Jenkinsfile`；文生图和 T2I Judge 不进入本轮 Asteria 测试分数。
+- 新增独立 `docker-compose.ci.yml` 官方 Jenkins LTS JDK 21 控制器配置；当前 macOS 使用原生 Jenkins 直接调用已安装工具，Windows 迁移时由 Jenkins agent 提供 Python、Node/Newman、JMeter。默认只跑工作台合同，Newman/JMeter 通过参数显式开启并归档结果。

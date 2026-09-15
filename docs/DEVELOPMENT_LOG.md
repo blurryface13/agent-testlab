@@ -98,6 +98,15 @@ GitHub 重命名只改变远端名称。初次交接时文档尚未提交；用�
 - 对本机磁盘进行只读盘点后，仅清理 Python、Node、Homebrew 和 Conda 的包缓存，释放约 1.3GB；保留仓库、模型、论文、虚拟环境、Docker 数据和 Codex 运行时，未停止现有项目服务。
 - 根据求职测开目标重新确认技术栈优先级：pytest/Requests 负责代码与接口测试，Postman/Newman 负责接口编排与重放，JMeter 负责性能练习，Jenkins 负责固定回归、门禁和 JUnit/Allure 归档。
 - Jenkins 不再作为可有可无的“计划中”工具：当前仓库已有无密钥 Jenkinsfile，下一步在 Windows + Docker Desktop 上单独部署 Jenkins LTS，先完成 Asteria 合同测试 Pipeline，再把 JMeter 性能任务作为显式触发阶段；纯 Java 的 jAgent 可作为后续压测目标，不与 Asteria 只读控制面混淆。
+- 本节点继续落地 Jenkins：新增独立 CI Compose 控制器配置，Pipeline 增加工具预检、可选 Newman 只读重放、可选 JMeter 只读性能阶段及全量产物归档；默认工作台合同回归，不自动触发外部接口或压测。控制器与工具执行节点解耦，当前 macOS 由原生 Jenkins 使用宿主工具，Windows 迁移时配置带测试工具的 agent。
+
+### 2026-09-15：Jenkins 本机工具链安装与迁移口径修正（Codex / GPT-5）
+
+- 已在 macOS 安装并验证 Java 21、JMeter 5.6.3、Allure 2.46.1、Newman 6.2.2、Postman 12.28.0、Charles 5.2.1；Docker Desktop 已启动并可用。
+- 已通过 Homebrew 启动 Jenkins LTS，`http://127.0.0.1:8080` 可访问。Jenkins 的第一次初始化、Pipeline Job 和首轮构建结果需继续记录，不把“服务端口可访问”写成流水线已通过。
+- 定制 Jenkins 镜像第一次构建因基础镜像 Debian 软件源的 HTTP 网络不可达而中止，未保留不可复现的定制镜像，也未关闭 TLS 校验；改为官方 Jenkins LTS 控制器 Compose，工具由执行节点提供。
+- 端口约定：当前 macOS 原生 Jenkins 占用 8080，Docker 控制器仅作为迁移配置映射 8081；Windows 独立运行时可映射回 8080。TestLab、Asteria 和前端服务保持运行。
+- 为适配 Homebrew 服务的最小 launchd 环境，Jenkinsfile 在不覆盖原有 PATH 的前提下补入 Homebrew、Node 和 Newman 用户目录；Linux agent 仍沿用自身 PATH。
 
 ### 2026-09-15：补充抓包工具说明（Codex / GPT-5）
 
