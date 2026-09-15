@@ -91,6 +91,24 @@ TOOLS = [
         "description": "结构化 Trace、行为检查和四维质量评分",
         "guide": ["先运行 Coordinator 或导入历史 Trace", "检查工具与状态断言", "查看相关性、准确性、完整性和帮助性"],
     },
+    {
+        "id": "charles",
+        "name": "Charles",
+        "kind": "diagnostic",
+        "status": "manual",
+        "executable": False,
+        "description": "本地 HTTP 请求抓包、时序观察与问题定位",
+        "guide": ["仅过滤 Asteria host/8018，避免采集无关流量", "配合 Requests 或 Postman 重放只读请求", "检查状态码、响应时间和错误响应，导出前脱敏"],
+    },
+    {
+        "id": "fiddler",
+        "name": "Fiddler",
+        "kind": "diagnostic",
+        "status": "manual",
+        "executable": False,
+        "description": "Windows 环境 HTTP 调试、抓包与会话回放",
+        "guide": ["启用本地流量捕获并限定 Asteria host/8018", "用 Composer 或 Postman 重放固定只读请求", "从 Inspectors 查看 headers/body/timing，保存脱敏会话"],
+    },
 ]
 
 CASES = [

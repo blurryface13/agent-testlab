@@ -368,7 +368,7 @@ export async function loadPolishRun(runId: string): Promise<PolishRun> {
 }
 
 export type TestTarget = { id: string; name: string; description: string; status: string; default_mode: string };
-export type TestTool = { id: string; name: string; kind: string; status: string; description: string; guide: string[]; asset?: string };
+export type TestTool = { id: string; name: string; kind: string; status: string; executable?: boolean; description: string; guide: string[]; asset?: string };
 export type TestCase = {
   id: string;
   name: string;

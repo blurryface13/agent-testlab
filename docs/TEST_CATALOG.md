@@ -12,6 +12,7 @@
 | Newman | 将同一 Postman Collection 接到 CI，非新增业务逻辑 | CLI 输出、JUnit 报告 |
 | JMeter | 阶梯负载、持续压测、超时和吞吐观察 | JMX、JTL、HTML Dashboard |
 | Jenkins | 调度、参数化执行、凭据管理、门禁和产物归档 | build URL、JUnit 趋势、Allure 链接 |
+| Charles / Fiddler | 本地接口抓包、请求时序和错误定位 | 脱敏会话、问题截图或复现说明 |
 | Agent Eval | 当前 Coordinator 的真实执行和历史补评 | Trace、四维评分、BadCase |
 
 数据驱动可以使用 YAML/JSON，但不是给简历凑技术栈。上游 eval/debugtalk 类动态函数或表达式机制先审计，不直接允许上传执行。只支持白名单转换器，不使用 eval 处理网页输入。

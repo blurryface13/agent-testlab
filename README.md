@@ -10,6 +10,7 @@
 
 - **测试目录**：以 Asteria 为默认目标，按单元、接口、集成、性能、故障和 Agent 评测组织场景；T2I 与 QuinClaude 保留为兼容目标和场景来源。
 - **自动化执行**：以 pytest＋Requests 为主，pytest-asyncio 验证异步 Coordinator、事件和取消；提供 Asteria 专用 Postman/Newman、JMeter 与 Jenkins 资产。
+- **问题定位辅助**：工具说明页补充 Charles/Fiddler 抓包流程，与 Requests/Postman 联动查看 Asteria 请求、响应、时序和错误；会话导出前明确脱敏，不接管浏览器或生产流量。
 - **Agent 评测**：通过结构化 Trace 检查意图路由、工具调用、任务状态和输出质量，支持四维 LLM-as-Judge、版本回归与 BadCase 归档。
 - **运行可观测**：记录每次运行的目标版本、环境、耗时、通过/失败/错误/跳过状态和可脱敏产物；Monitor 指标与质量评分分开统计。
 - **本地部署**：提供 Docker Compose 配置，可在 Windows＋Docker Desktop 或个人 PC 上先以 Mock 模式启动；Asteria 通过 `ASTERIA_BASE_URL` 做只读 API 冒烟，源码合同测试通过 `ASTERIA_PROJECT_ROOT` 接入。

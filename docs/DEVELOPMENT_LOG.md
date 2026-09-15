@@ -92,3 +92,9 @@ GitHub 重命名只改变远端名称。初次交接时文档尚未提交；用�
 - 本轮主线是 Asteria 的测试对象、测试指令和工具使用：pytest/Requests 负责可重复的代码与接口断言，Postman/Newman 负责请求编排与 CI 重放，JMeter 负责隔离只读控制面的性能练习，Jenkins 负责固定参数回归和结果归档。
 - Charles/Fiddler、Tapd/Jira、Linux/SQL/Docker 作为抓包、缺陷流转、环境与数据辅助知识记录，不新增未实现的外部连接器；不为学习工具而改动 Asteria 主编排。
 - 文生图生成、VLM/LLM Judge 和付费研究任务不纳入本轮 Asteria 测试前置条件；E-A01/F-A01 仍只登记为后续真实 Coordinator/历史 Trace 场景，不能把 Mock 或只读冒烟当成端到端质量结果。
+
+### 2026-09-15：补充抓包工具说明（Codex / GPT-5）
+
+- 工具目录新增 Charles、Fiddler 两个手动辅助项，定位为本地 HTTP 调试和时序观察，不加入可执行工具下拉，不接受网页远程控制、任意代理地址或生产流量。
+- Asteria 使用流程固定为：限定 8018 host/端口 → 用 Requests/Postman 重放只读请求 → 对照状态码、headers、body、timing 和服务日志定位问题 → 导出前脱敏。Charles 更适合跨平台本地调试，Fiddler 作为 Windows 环境同类替代。
+- 本节点只增加工具教学、工具页展示与状态区分，不改变 Asteria 主编排；前端构建和 TestLab 合同回归需在本节点后复跑。

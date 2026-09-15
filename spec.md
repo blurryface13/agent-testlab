@@ -11,7 +11,7 @@
 角色边界：
 
 - Asteria：本轮主被测科研系统，接入 EchoMind 启发的 Monitor 和独立评分服务，保留真实 Coordinator、持久化研究 worker、人工审批与技能选择。
-- Agent TestLab：测试控制台，承载 pytest、Requests、Postman、JMeter、Jenkins 的任务选择与结果汇总；通过注册的合同/只读 API 适配口读取 Asteria 结果，不在前端再实现另一套评分。
+- Agent TestLab：测试控制台，承载 pytest、Requests、Postman、JMeter、Jenkins 的任务选择与结果汇总；提供 Charles/Fiddler 的手动抓包指引用于问题定位，不远程控制抓包软件。通过注册的合同/只读 API 适配口读取 Asteria 结果，不在前端再实现另一套评分。
 - QuinClaude：运行时测试场景来源。通过单独 adapter 测试，不假定其代码已经成为 Asteria 的真实依赖。
 - T2I：现有业务模块，也是合同、数据质量、生成及裁判流程的测试对象。
 - 公司仓库与相邻 demo：不纳入本轮写入、复制、发布或压测范围。
