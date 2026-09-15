@@ -9,24 +9,24 @@ from copy import deepcopy
 
 TARGETS = [
     {
-        "id": "t2i-safety",
-        "name": "T2I Safety",
-        "description": "文生图生成、图像裁判与数据质量链路",
+        "id": "asteria-agent",
+        "name": "Asteria Research Agent",
+        "description": "科研 Agent 的 Coordinator、任务执行、知识库与评测链路",
         "status": "local",
         "default_mode": "mock",
     },
     {
-        "id": "asteria-agent",
-        "name": "Asteria Research Agent",
-        "description": "科研 Agent 的 Coordinator、任务执行与评测链路",
-        "status": "adapter_pending",
+        "id": "t2i-safety",
+        "name": "T2I Safety（兼容目标）",
+        "description": "文生图生成、图像裁判与数据质量链路（历史适配）",
+        "status": "legacy",
         "default_mode": "mock",
     },
     {
         "id": "quinclaude-runtime",
         "name": "QuinClaude Runtime",
         "description": "本地 Agent Runtime 的异步通信、权限和上下文管理",
-        "status": "adapter_pending",
+        "status": "scenario_source",
         "default_mode": "mock",
     },
 ]
@@ -53,8 +53,8 @@ TOOLS = [
         "name": "Requests",
         "kind": "api",
         "status": "ready",
-        "description": "HTTP 接口请求、参数提取与响应断言",
-        "guide": ["选择目标环境", "执行受控接口用例", "按状态码、JSON 和数据库状态交叉断言"],
+        "description": "HTTP 接口冒烟、参数提取与响应断言",
+        "guide": ["配置被测服务地址", "执行固定接口用例", "按状态码、JSON 和业务状态断言"],
     },
     {
         "id": "postman",
@@ -62,7 +62,7 @@ TOOLS = [
         "kind": "api",
         "status": "export",
         "description": "接口调试、Collection 导出与 CI 执行",
-        "guide": ["下载无密钥 Collection", "在 Postman 配置本地环境", "用 Newman 导出机器可读结果"],
+        "guide": ["下载登记的 Collection", "在 Postman 配置被测环境", "用 Newman 导出机器可读结果"],
         "asset": "postman",
     },
     {
@@ -71,7 +71,7 @@ TOOLS = [
         "kind": "performance",
         "status": "export",
         "description": "控制面接口的阶梯负载与持续压测",
-        "guide": ["先使用 Mock provider", "逐级增加并发并观察错误率", "查看 P95/P99、吞吐量和资源曲线"],
+        "guide": ["先对隔离环境运行小流量", "逐级增加并发并观察错误率", "查看 P95/P99、吞吐量和资源曲线"],
         "asset": "jmeter",
     },
     {
@@ -94,6 +94,85 @@ TOOLS = [
 ]
 
 CASES = [
+    {
+        "id": "U-A01",
+        "name": "Coordinator 请求契约",
+        "target": "asteria-agent",
+        "level": "unit",
+        "tools": ["pytest"],
+        "scope": "TurnRequest 与研究请求",
+        "precondition": "纯函数合同，不调用模型或数据库",
+        "assertions": ["空消息与客户端注入字段被拒绝", "研究能力枚举受约束", "服务端凭据不进入任务载荷"],
+        "description": "验证科研 Agent 统一 Coordinator 的输入边界与安全字段约束。",
+    },
+    {
+        "id": "U-A02",
+        "name": "Judge 与 Monitor 合同",
+        "target": "asteria-agent",
+        "level": "unit",
+        "tools": ["pytest"],
+        "scope": "质量评分与运行观测",
+        "precondition": "固定 JSON 与持久记录样本",
+        "assertions": ["四维分数范围有效", "非法 Judge 输出显式报错", "样本不足不伪造路由反馈"],
+        "description": "检查 LLM-as-Judge 严格解析和 observation-only Monitor 的边界。",
+    },
+    {
+        "id": "I-A01",
+        "name": "Coordinator 异步意图路由",
+        "target": "asteria-agent",
+        "level": "integration",
+        "tools": ["pytest-asyncio", "pytest"],
+        "scope": "意图分析 → 能力路由",
+        "precondition": "Fake model 与固定会话上下文",
+        "assertions": ["意图结果结构化", "研究/问答能力不混路由", "多轮上下文传递正确"],
+        "description": "用异步替身验证 Coordinator 对科研请求的路由合同。",
+    },
+    {
+        "id": "A-A01",
+        "name": "Asteria API 健康与 OpenAPI",
+        "target": "asteria-agent",
+        "level": "api",
+        "tools": ["requests", "postman"],
+        "scope": "GET /openapi.json、/.well-known/agent-discovery.json",
+        "precondition": "ASTERIA_BASE_URL 指向已启动的 API",
+        "assertions": ["HTTP 200", "Coordinator/Run/Evaluation 路由已注册", "只读冒烟不提交研究任务"],
+        "description": "面向运行中的 Asteria 做无密钥、无副作用的 API 冒烟检查。",
+        "tool_assets": {"postman": "asteria-postman"},
+    },
+    {
+        "id": "E-A01",
+        "name": "科研 Agent 端到端行为回归",
+        "target": "asteria-agent",
+        "level": "agent",
+        "tools": ["agent-eval"],
+        "scope": "Coordinator → 工具 → 交付",
+        "precondition": "固定科研指令或已授权历史 Trace",
+        "assertions": ["能力路由正确", "工具调用可追溯", "报告质量评分与证据关联"],
+        "description": "调用真实 Coordinator 或导入历史 Trace，形成 Agent 行为回归记录。",
+    },
+    {
+        "id": "P-A01",
+        "name": "Asteria 控制面只读压测",
+        "target": "asteria-agent",
+        "level": "performance",
+        "tools": ["jmeter"],
+        "scope": "OpenAPI、Monitor、Trace 读取接口",
+        "precondition": "隔离 Asteria 环境与可选测试令牌",
+        "assertions": ["吞吐量可记录", "P95/P99 可记录", "错误按接口分类"],
+        "description": "只压测只读观测入口，不触发模型调用或研究任务提交。",
+        "tool_assets": {"jmeter": "asteria-jmeter"},
+    },
+    {
+        "id": "F-A01",
+        "name": "Worker 异常与任务状态恢复",
+        "target": "asteria-agent",
+        "level": "fault",
+        "tools": ["pytest-asyncio", "agent-eval"],
+        "scope": "超时、断连、取消与持久状态",
+        "precondition": "隔离 worker 与故障替身",
+        "assertions": ["错误分类准确", "不重复创建任务", "恢复后状态与事件可读取"],
+        "description": "验证研究任务在 worker/API 异常后的状态一致性与可恢复边界。",
+    },
     {
         "id": "U-T01",
         "name": "安全评测输入合同",
@@ -211,6 +290,19 @@ def _tool_index() -> dict[str, dict]:
     return {item["id"]: item for item in TOOLS}
 
 
+def _tool_details(case: dict, tools: dict[str, dict]) -> list[dict]:
+    details = []
+    for name in case["tools"]:
+        if name not in tools:
+            continue
+        detail = deepcopy(tools[name])
+        asset = case.get("tool_assets", {}).get(name)
+        if asset:
+            detail["asset"] = asset
+        details.append(detail)
+    return details
+
+
 def list_catalog(*, target: str | None = None, level: str | None = None, tool: str | None = None) -> list[dict]:
     tools = _tool_index()
     items = []
@@ -222,7 +314,7 @@ def list_catalog(*, target: str | None = None, level: str | None = None, tool: s
         if tool and tool not in case["tools"]:
             continue
         item = deepcopy(case)
-        item["tool_details"] = [tools[name] for name in case["tools"] if name in tools]
+        item["tool_details"] = _tool_details(case, tools)
         items.append(item)
     return items
 
@@ -231,6 +323,6 @@ def get_case(case_id: str) -> dict | None:
     for case in CASES:
         if case["id"] == case_id:
             item = deepcopy(case)
-            item["tool_details"] = [_tool_index()[name] for name in case["tools"]]
+            item["tool_details"] = _tool_details(case, _tool_index())
             return item
     return None

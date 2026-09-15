@@ -6,6 +6,9 @@ services:
     environment:
       TESTLAB_DATA_ROOT: /app/data/testlab
       REDIS_URL: redis://redis:6379/0
+      # Docker Desktop reaches an Asteria service on the host through this name.
+      # Override with an intranet address when Asteria runs elsewhere.
+      ASTERIA_BASE_URL: ${ASTERIA_BASE_URL:-http://host.docker.internal:8018}
       # 若部署机能访问真实 T2I pipeline，可在 .env 设置并按部署文档挂载。
       T2I_PIPELINE_ROOT: ${T2I_PIPELINE_ROOT:-/app/demo}
     volumes:

@@ -105,11 +105,18 @@ Asteria API 和 worker 为不同进程，不能直接依赖 EchoMind 的单进�
 
 Prometheus 直方图 observe 每次完成的真实耗时，不反复采样累计平均值。labels 限定 tool/capability/status，不放用户、完整 query、run_id 或密钥。`/monitor`、`/metrics` 仅内网/认证访问；结构化日志用 run/turn/span ID 关联，敏感正文另受权限管理。
 
-## 6. 当前接入状态
+## 6. TestLab 接入状态
+
+- Asteria 是 TestLab 的默认目标，T2I 只保留为兼容目标；当前轮不测试文生图生成或 T2I 的 LLM 裁判。
+- Asteria 合同 runner 固定执行 checkout 中的 `tests/test_testlab_contract.py`，覆盖路由注册、Coordinator 研究请求安全边界、Judge/Monitor 严格合同和异步意图结构；不启动研究任务、不访问 PostgreSQL。
+- Requests runner 固定执行 TestLab 的 `backend/tests/test_asteria_api_smoke.py`，默认只读访问 `ASTERIA_BASE_URL` 的 `/openapi.json` 和 `/.well-known/agent-discovery.json`，用于确认运行中的 Asteria 版本实际暴露了 Coordinator、Run 和 Evaluation 入口。
+- Postman/Newman 与 JMeter 下载资产同样只面向 Asteria 只读控制面；受保护的评测业务接口需要后续由独立测试用户和认证环境显式注入，不能把 token 写入仓库。
+
+## 7. 当前接入状态
 
 - Asteria 已提供 `/api/evaluation/quality/prompt`、`/quality/judge`、`/quality` 和 `/monitor`。Judge 采用严格 JSON 合同，缺字段/越界/非法 JSON 均记录 `judge_error`，不默认补 0.5。
 - Asteria 的 Monitor 从持久化 `results`/`traces` 聚合调用次数、成功率、平均/P95 延迟、连续失败和工具错误；样本不足 10 次显示 `unknown`，当前只返回 `observation_only`，不替换现有 Coordinator。
-- TestLab 提供相同评测侧的 `agent-eval` 用例、Mock 故障注入和运行记录；真实科研 Coordinator 的 live/rescore 需要独立认证、模型和证据环境，不把 Mock 结果当作效果数据。
+- TestLab 提供相同评测侧的 `agent-eval` 用例、Mock 故障注入和运行记录；真实科研 Coordinator 的 live/rescore 需要独立认证、模型和证据环境，不把 Mock 结果当作效果数据。Asteria 的合同/只读 API runner 已可在工作台执行。
 
 ## 7. 验证清单
 

@@ -1,0 +1,44 @@
+{
+  "info": {
+    "name": "Asteria Research Agent · Read-only Smoke",
+    "description": "固定只读冒烟请求，不提交研究任务、不调用模型、不携带密钥。默认指向本地 Asteria API 8018。",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://127.0.0.1:8018" }
+  ],
+  "item": [
+    {
+      "name": "OpenAPI 路由合同",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{base_url}}/openapi.json", "host": ["{{base_url}}"], "path": ["openapi.json"] }
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "type": "text/javascript", "exec": [
+          "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+          "const paths = Object.keys(pm.response.json().paths || {});",
+          "pm.test('Coordinator route registered', function () { pm.expect(paths).to.include('/api/coordinator/route'); });",
+          "pm.test('Evaluation monitor registered', function () { pm.expect(paths).to.include('/api/evaluation/monitor'); });"
+        ] }
+      }]
+    },
+    {
+      "name": "Agent Discovery",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{base_url}}/.well-known/agent-discovery.json", "host": ["{{base_url}}"], "path": [".well-known", "agent-discovery.json"] }
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "type": "text/javascript", "exec": [
+          "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+          "pm.test('Discovery identifies a service', function () { pm.expect(pm.response.json().service).to.be.ok; });"
+        ] }
+      }]
+    }
+  ]
+}

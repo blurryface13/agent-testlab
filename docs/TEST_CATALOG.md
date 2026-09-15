@@ -1,6 +1,6 @@
 # 测试场景、工具与 CI 计划
 
-2026-09-15 · Codex（GPT-5）。目录与工具适配已落地；未执行的外部工具和真实模型场景仍明确标注。
+2026-09-15 · Codex（GPT-5）。Asteria 为本轮主测试对象；未执行的外部工具和真实模型场景仍明确标注。
 
 ## 1. 技术栈与职责
 
@@ -17,6 +17,20 @@
 数据驱动可以使用 YAML/JSON，但不是给简历凑技术栈。上游 eval/debugtalk 类动态函数或表达式机制先审计，不直接允许上传执行。只支持白名单转换器，不使用 eval 处理网页输入。
 
 ## 2. 场景目录
+
+### 2.1 Asteria 主目录
+
+| ID | 层级 | 场景与测试单元 | 主要断言 | 执行方式 |
+| --- | --- | --- | --- | --- |
+| U-A01 | 单元 | Coordinator `TurnRequest` 与研究请求校验 | 空消息、未知能力、客户端凭据被拒绝 | Asteria 固定 pytest 合同 |
+| U-A02 | 单元 | Judge 严格解析、Monitor 冷启动 | 四维分数范围、非法 JSON、样本不足保护 | Asteria 固定 pytest 合同 |
+| I-A01 | 集成 | 异步意图分析与能力路由 | 结构化意图、多轮上下文、研究/问答不混路由 | pytest＋异步替身 |
+| A-A01 | 接口 | `GET /openapi.json`、Agent Discovery | HTTP 200、Coordinator/Run/Evaluation 路由存在 | Requests；Postman 同源样例 |
+| E-A01 | Agent | Coordinator → 工具 → 科研交付 | 路由、工具 Trace、质量评分与证据关联 | Agent Eval / 历史 Trace |
+| P-A01 | 性能 | OpenAPI、Monitor、Trace 只读接口 | 吞吐量、P95/P99、错误率 | JMeter，禁止提交研究任务 |
+| F-A01 | 故障 | Worker/API 异常、取消、状态恢复 | 不重复建任务，错误与事件可追溯 | pytest-asyncio＋隔离替身 |
+
+`A-A01` 是当前机器可以直接对运行中 Asteria 执行的无密钥冒烟；其余 live/性能/评测场景需要隔离环境、测试用户或显式认证配置。TestLab 的本地 runner 只接受这些登记的固定入口，不接收浏览器传入的命令或 URL。
 
 | ID | 层级/目标 | 场景与测试单元 | 主要断言 | 执行方式 |
 | --- | --- | --- | --- | --- |
@@ -41,9 +55,16 @@
 | F-01 | 稳定性/依赖 | 模型超时、工具异常、网络中断 | 重试有上限；状态真实；恢复不重复计费或副作用 | 故障替身，不切断共享网络 |
 | E2E-01/02 | Agent 语义 | 见 Agent 评测计划 | 任务结果＋行为约束＋四维 Judge | 单独 live 或历史补评 |
 
-Catalog 中的 10 项是可选择的场景族；首版 Mock runner 已覆盖目录校验、预检 hash、批次执行、故障注入、事件和 BadCase。`backend/tests/test_t2i_company_contract.py` 是用户已有的业务合同测试，保持其内容和提交边界；新增 `test_testing_workbench.py` 验证工作台自身合同。JMeter、Newman、Jenkins 资产已提供，但未宣称外部工具在当前主机已连接。
+Catalog 中的场景族是可选择的；Mock runner 已覆盖目录校验、预检 hash、批次执行、故障注入、事件和 BadCase。Asteria 本地 runner 只执行 Asteria checkout 中的 `tests/test_testlab_contract.py`，Requests runner 只执行 TestLab 中的只读 API 冒烟。`backend/tests/test_t2i_company_contract.py` 仍是兼容目标的业务合同测试，不计入 Asteria 结果。JMeter、Newman、Jenkins 资产已提供，但未宣称外部工具在当前主机已经连接。
 
 ## 3. 工具使用教学设计
+
+本轮目标是把测开工具用在 Asteria 的真实控制面和固定合同上，而不是为每个工具强行做一层新平台：
+
+- **基础与代码测试**：先用测试流程、等价类、边界值和场景法拆分 Asteria 的 Coordinator、状态和权限合同，再用 pytest/Requests 落成可重复断言；异步行为用 pytest-asyncio 或异步替身验证。
+- **接口与协作工具**：Postman 用于手动组织请求、环境变量和响应断言，Newman 用于命令行/CI 重放；Charles/Fiddler 只作为抓包与日志定位工具，Tapd/Jira 只作为缺陷流转工具，不伪装成 TestLab 已接入的执行器。
+- **性能与交付**：JMeter 只对隔离 Asteria 只读控制面做小流量学习，记录吞吐量、P95/P99 和错误率；Jenkins 负责固定参数回归与 JUnit 归档。先掌握使用方式，再扩展到受保护业务接口。
+- **数据与环境**：Linux、SQL 和 Docker 用于准备测试数据、检查任务状态、隔离运行环境；模型、文生图和 LLM Judge 不属于本轮 Asteria 冒烟的前置依赖。
 
 每个场景提供同一份“请求、预期、断言、执行结果”，右侧「查看操作」按当前工具展示，不放长篇教程占据主页面。
 
@@ -64,9 +85,9 @@ Catalog 中的 10 项是可选择的场景族；首版 Mock runner 已覆盖目�
 目标命令形状（Collection、JMX 与 Jenkinsfile 已创建；执行前仍需确认本机已安装对应工具）：
 
 ```sh
-pytest tests/unit tests/api -m "not live and not performance" --junitxml=artifacts/junit.xml --alluredir=artifacts/allure-results
-newman run collections/t2i-smoke.postman_collection.json -e environments/local.postman_environment.json -r cli,junit --reporter-junit-export artifacts/newman.xml
-jmeter -n -t performance/control-plane.jmx -l artifacts/results.jtl -e -o artifacts/jmeter-report
+pytest /path/to/asteria-agent/tests/test_testlab_contract.py -q --junitxml=artifacts/asteria-junit.xml
+newman run collections/asteria-agent-smoke.postman_collection.json -r cli,junit --reporter-junit-export artifacts/newman.xml
+jmeter -n -t performance/asteria-readonly.jmx -l artifacts/results.jtl -e -o artifacts/jmeter-report
 ```
 
 执行前检查 JDK、JMeter、Node/Newman、Allure 及 Python 锁定版本；缺依赖显示 setup_error，不在业务服务器自动升级全局环境。Jenkins 不挂宿主 Docker socket 作为默认方案，runner 权限和工作目录单独限制。

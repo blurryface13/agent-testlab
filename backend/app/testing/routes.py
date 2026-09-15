@@ -16,8 +16,10 @@ router = APIRouter(prefix="/api/testing", tags=["testing workbench"])
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 ASSETS = {
     "postman": PROJECT_ROOT / "collections" / "agent-testlab-smoke.postman_collection.json",
+    "asteria-postman": PROJECT_ROOT / "collections" / "asteria-agent-smoke.postman_collection.json",
     "postman-environment": PROJECT_ROOT / "collections" / "local.postman_environment.json",
     "jmeter": PROJECT_ROOT / "performance" / "control-plane.jmx",
+    "asteria-jmeter": PROJECT_ROOT / "performance" / "asteria-readonly.jmx",
     "jenkins": PROJECT_ROOT / "Jenkinsfile",
 }
 

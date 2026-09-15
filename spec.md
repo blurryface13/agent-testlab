@@ -4,14 +4,14 @@
 
 ## 1. 目标与边界
 
-将现有个人 T2I Safety 控制台扩展为自动化测试工作台。传统测试负责接口、状态、权限、异常和性能；Agent 评测负责意图、执行行为和交付质量。两者共用用例目录、批次记录、报告入口和 BadCase 流程，不混用通过率分母。
+将现有个人 T2I Safety 控制台演进为以 Asteria Research Agent 为主测试对象的自动化测试工作台。传统测试负责接口、状态、权限、异常和性能；Agent 评测负责意图、执行行为和交付质量。两者共用用例目录、批次记录、报告入口和 BadCase 流程，不混用通过率分母。T2I 只作为兼容目标保留，不作为本轮科研 Agent 测试的替代物。
 
 本轮交付自动化测试工作台首版、工具适配资产、Docker 部署包、两组 Agent 测试指令和 Asteria 评测合同。不发起真实模型调用、不安装 Jenkins、不运行真实压测、不修改科研主编排、不复制公司代码或私有数据。
 
 角色边界：
 
-- Asteria：被测科研系统，接入 EchoMind 启发的 Monitor 和独立评分服务，保留真实 Coordinator、持久化研究 worker、人工审批与技能选择。
-- Agent TestLab：测试控制台，承载 pytest、Postman、JMeter、Jenkins 的任务选择与结果汇总；通过后续受控适配口读取 Asteria 评测结果，不在前端再实现另一套评分。
+- Asteria：本轮主被测科研系统，接入 EchoMind 启发的 Monitor 和独立评分服务，保留真实 Coordinator、持久化研究 worker、人工审批与技能选择。
+- Agent TestLab：测试控制台，承载 pytest、Requests、Postman、JMeter、Jenkins 的任务选择与结果汇总；通过注册的合同/只读 API 适配口读取 Asteria 结果，不在前端再实现另一套评分。
 - QuinClaude：运行时测试场景来源。通过单独 adapter 测试，不假定其代码已经成为 Asteria 的真实依赖。
 - T2I：现有业务模块，也是合同、数据质量、生成及裁判流程的测试对象。
 - 公司仓库与相邻 demo：不纳入本轮写入、复制、发布或压测范围。
@@ -21,7 +21,7 @@
 | 系统 | 已核对 | 本轮不宣称已完成 |
 | --- | --- | --- |
 | T2I | FastAPI、React/Vite，数据集/生图/裁判入口；本地存在 unittest＋Mock 合同测试；已接入 TestLab runner | 外部模型和真实负载成绩 |
-| Asteria | PostgreSQL Run/Event/审批/产物，Coordinator，规则评测及 BadCase 页面；已接入严格 Judge/Monitor 合同 | live provider、历史语义补评、Monitor 路由反馈闭环 |
+| Asteria | PostgreSQL Run/Event/审批/产物，Coordinator，规则评测及 BadCase 页面；已接入严格 Judge/Monitor 合同，新增 TestLab 固定合同与只读 API 冒烟 | live provider、历史语义补评、Monitor 路由反馈闭环 |
 | 旧评测 adapter | basic、multi_agent、multi_agent_perspectives 工作流 | 不等于通过当前 Coordinator 的端到端测试，需由 TestLab 受控调用 |
 | EchoMind | Python evaluator、PerformanceMonitor、同类实例路由评分、四维 Judge | 原始代码不等于已迁入 Asteria；五组内置客服用例不计入本项目 |
 
@@ -73,7 +73,7 @@ TestLab 元数据使用独立 PostgreSQL database/schema 与凭据，不写 Aste
 - GET `/api/testing/catalog`：返回合法目标、工具和用例组合。
 - GET `/api/testing/targets`、`/tools`：返回目标与工具的脱敏状态、操作指引。
 - POST `/api/testing/runs/preview`：解析用例、兼容性、执行模式和预算提示；不调用模型、不写业务产物，并返回配置摘要 hash。
-- POST `/api/testing/runs`：必须携带预览 hash，启动受控 runner；不接受任意 Shell、脚本路径或 URL。
+- POST `/api/testing/runs`：必须携带预览 hash，启动受控 runner；Asteria 本地只执行登记的合同 pytest 或只读 Requests 套件，不接受任意 Shell、脚本路径或 URL。
 - GET `/api/testing/runs/{id}` 与 `/events?after=`：读取批次状态、断言结果和增量事件。
 - POST `/api/testing/runs/{id}/cancel`：请求取消后续用例，不停止共享服务。
 - GET `/api/testing/badcases`：从失败/错误结果生成候选 BadCase，保留故障类型与证据。
@@ -99,7 +99,7 @@ JMeter 从独立机器发压；控制面接口压测使用模型替身，低并�
 | --- | --- | --- |
 | P0 隔离与合同 | 测试配置、临时数据目录、目标白名单、来源许可核对 | 已完成：runner 仅接受注册目标/用例/工具；JSON 事实源与可选 Redis 分离 |
 | P1 基础自动化 | pytest＋Requests、T2I 合同测试接入、Postman 资产 | 已完成首版：Mock 业务链、预览 hash、运行事件、取消、BadCase 和无密钥 Collection |
-| P2 科研评测 | EchoMind adapter、Monitor、两组用例、历史补评 | 已完成接入合同：Asteria 提供严格 Judge 解析和 Monitor 观测 API；真实 Coordinator run/score 仍需配置环境后执行 |
+| P2 科研评测 | EchoMind adapter、Monitor、两组用例、历史补评 | 已完成接入合同：Asteria 提供严格 Judge 解析和 Monitor 观测 API；TestLab 已登记 Asteria 合同与只读 API runner；真实 Coordinator run/score 仍需配置环境后执行 |
 | P3 控制台 | 按 DESIGN.md 接入类型/工具/内容选择与结果详情 | 已完成首版：测试工作台、运行记录、BadCase、工具说明和响应式布局 |
 | P4 CI 与性能 | Jenkins 冒烟/定时回归、Newman、JMeter | 已提供：Jenkinsfile、Postman Collection、JMeter JMX；外部服务连接和真实压测待部署环境验证 |
 
@@ -127,3 +127,5 @@ JMeter 从独立机器发压；控制面接口压测使用模型替身，低并�
 - 新增 Redis best-effort 事件镜像与 Prometheus 指标；Redis 不可用时不影响 JSON 事实源。
 - 新增 Postman/Newman Collection、JMeter 控制面 JMX、Jenkins 冒烟流水线和 Docker Compose（FastAPI + Nginx + Redis）。
 - Asteria 新增 EchoMind 风格的严格 Judge 合同与持久结果 Monitor 聚合，默认 `observation_only`，样本不足时为 `unknown`，不直接改写 Coordinator 路由。
+- Asteria 成为 TestLab 默认目标：`tests/test_testlab_contract.py` 覆盖 Coordinator/评测路由、研究请求凭据边界、Judge/Monitor 合同和异步意图结构；TestLab `backend/tests/test_asteria_api_smoke.py` 通过 Requests 只读检查运行中的 OpenAPI 与 Agent Discovery。
+- 新增无密钥 `collections/asteria-agent-smoke.postman_collection.json`、只读 `performance/asteria-readonly.jmx` 和可选 Asteria 合同分支的 `Jenkinsfile`；文生图和 T2I Judge 不进入本轮 Asteria 测试分数。

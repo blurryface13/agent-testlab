@@ -1,9 +1,8 @@
 """Controlled local runner for Agent TestLab.
 
-The first implementation makes the test workflow real without making the
-browser a remote shell. Mock execution is deterministic and persisted to a
-separate directory. A later adapter can replace one registered executor while
-the run/result contract remains unchanged.
+Mock execution is deterministic and persisted to a separate directory. Local
+execution is limited to checked-in, target-specific suites; the browser never
+supplies a command, path, URL, or environment value.
 """
 from __future__ import annotations
 
@@ -22,6 +21,7 @@ from .catalog import TARGETS, TOOLS, get_case
 from .observability import mirror_snapshot, record_case, record_run
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_ASTERIA_ROOT = Path("/Users/dora/Developer/asteria-agent")
 DATA_ROOT = Path(os.getenv("TESTLAB_DATA_ROOT", str(PROJECT_ROOT / "data" / "testlab"))).expanduser()
 RUN_ROOT = DATA_ROOT / "runs"
 RUN_ROOT.mkdir(parents=True, exist_ok=True)
@@ -88,16 +88,53 @@ def _public(run: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _asteria_root() -> Path | None:
+    configured = os.getenv("ASTERIA_PROJECT_ROOT")
+    candidate = Path(configured).expanduser() if configured else DEFAULT_ASTERIA_ROOT
+    if candidate.is_dir() and (candidate / "backend").is_dir():
+        return candidate.resolve()
+    return None
+
+
+def _asteria_python() -> str:
+    configured = os.getenv("ASTERIA_PYTHON")
+    if configured and Path(configured).expanduser().is_file():
+        return str(Path(configured).expanduser())
+    if Path("/Users/dora/miniconda3/envs/dora/bin/python").is_file():
+        return "/Users/dora/miniconda3/envs/dora/bin/python"
+    return sys.executable
+
+
+def _registered_local_executor(target: str, tool: str) -> tuple[list[str], Path, dict[str, str], str] | None:
+    """Return a fixed command for a registered local target/tool pair."""
+    environment = os.environ.copy()
+    if target == "t2i-safety" and tool == "pytest":
+        backend_path = str(PROJECT_ROOT / "backend")
+        environment["PYTHONPATH"] = os.pathsep.join(filter(None, [backend_path, environment.get("PYTHONPATH", "")]))
+        return ([sys.executable, "-m", "pytest", "backend/tests/test_t2i_company_contract.py", "-q"], PROJECT_ROOT, environment, "t2i-contract")
+    if target == "asteria-agent" and tool == "pytest":
+        root = _asteria_root()
+        test_file = root / "tests" / "test_testlab_contract.py" if root else None
+        if not root or not test_file.is_file():
+            return None
+        environment["PYTHONPATH"] = os.pathsep.join(filter(None, [str(root), environment.get("PYTHONPATH", "")]))
+        return ([_asteria_python(), "-m", "pytest", "tests/test_testlab_contract.py", "-q"], root, environment, "asteria-contract")
+    if target == "asteria-agent" and tool == "requests":
+        environment.setdefault("ASTERIA_BASE_URL", "http://127.0.0.1:8018")
+        return ([sys.executable, "-m", "pytest", "backend/tests/test_asteria_api_smoke.py", "-q"], PROJECT_ROOT, environment, "asteria-api-smoke")
+    return None
+
+
 def preview(*, target: str, case_ids: list[str], tool: str, mode: str, fault_mode: str) -> dict[str, Any]:
     if target not in {item["id"] for item in TARGETS}:
         return {"accepted": False, "message": "测试对象未登记，不能执行。"}
     if tool not in {item["id"] for item in TOOLS}:
         return {"accepted": False, "message": "执行工具未登记，不能执行。"}
-    if mode == "local" and tool != "pytest":
-        return {"accepted": False, "message": "本地执行模式目前只开放注册的 pytest 入口。"}
+    if mode == "local" and tool not in {"pytest", "requests"}:
+        return {"accepted": False, "message": "本地执行模式目前只开放注册的 pytest／Requests 入口。"}
     normalized_case_ids = list(dict.fromkeys(case_ids))
-    if mode == "local" and (target != "t2i-safety" or len(normalized_case_ids) != 1):
-        return {"accepted": False, "message": "本地 pytest 目前只开放 T2I Safety 的单个注册合同用例。"}
+    if mode == "local" and len(normalized_case_ids) != 1:
+        return {"accepted": False, "message": "本地执行目前只开放单个注册合同用例。"}
     cases = [get_case(case_id) for case_id in normalized_case_ids]
     missing = [case_id for case_id, case in zip(normalized_case_ids, cases) if case is None]
     selected = [case for case in cases if case is not None]
@@ -113,6 +150,10 @@ def preview(*, target: str, case_ids: list[str], tool: str, mode: str, fault_mod
         return {"accepted": False, "message": f"用例与测试对象不匹配：{', '.join(wrong_target)}"}
     if mode not in {"mock", "local"}:
         return {"accepted": False, "message": "执行模式只支持 mock 或 local。"}
+    if mode == "local" and not _registered_local_executor(target, tool):
+        if target == "asteria-agent" and tool == "pytest":
+            return {"accepted": False, "message": "未找到 Asteria 合同测试目录，请配置 ASTERIA_PROJECT_ROOT。"}
+        return {"accepted": False, "message": "该目标与工具尚未配置本地注册执行器。"}
     if fault_mode not in {"none", "timeout", "tool_error", "contract"}:
         return {"accepted": False, "message": "未知故障注入类型。"}
     paid = mode == "local" and any(case["level"] == "agent" for case in selected)
@@ -153,7 +194,8 @@ def start(*, target: str, case_ids: list[str], tool: str, mode: str, fault_mode:
         "started_at": None, "finished_at": None, "preview_hash": preview_hash,
         "case_ids": checked["selection"]["case_ids"], "total_cases": checked["selection"]["case_count"],
         "completed_cases": 0, "results": [], "events": [], "sequence": 0,
-        "cancel_event": threading.Event(), "runner_version": "testlab-mock-1",
+        "cancel_event": threading.Event(),
+        "runner_version": "testlab-registered-1" if mode == "local" else "testlab-mock-1",
     }
     with LOCK:
         RUNS[run_id] = run
@@ -171,8 +213,8 @@ def _execute(run: dict[str, Any]) -> None:
         run["started_at"] = now_iso()
         _event(run, "started", f"使用 {run['tool']} 执行 {run['mode']} 测试。")
         _write(run)
-    if run["mode"] == "local" and run["tool"] == "pytest":
-        _execute_registered_pytest(run)
+    if run["mode"] == "local" and run["tool"] in {"pytest", "requests"}:
+        _execute_registered_subprocess(run)
         return
     for index, case_id in enumerate(run["case_ids"]):
         if run["cancel_event"].is_set():
@@ -212,23 +254,33 @@ def _execute(run: dict[str, Any]) -> None:
         _write(run)
 
 
-def _execute_registered_pytest(run: dict[str, Any]) -> None:
-    """Run only the checked-in contract test file, never a browser-supplied path."""
-    command = [sys.executable, "-m", "pytest", "backend/tests/test_t2i_company_contract.py", "-q"]
+def _execute_registered_subprocess(run: dict[str, Any]) -> None:
+    """Run only a checked-in target suite, never a browser-supplied command."""
+    registered = _registered_local_executor(run["target"], run["tool"])
+    if not registered:
+        with LOCK:
+            run["results"].append({
+                "case_id": run["case_ids"][0], "status": "error", "error_type": "runner_error",
+                "message": "本地注册执行器未配置", "duration_ms": 0,
+                "assertions": get_case(run["case_ids"][0])["assertions"], "evidence": {},
+            })
+            run["completed_cases"] = run["total_cases"]
+            run["status"] = "failed"
+            run["finished_at"] = now_iso()
+            _event(run, "failed", "本地注册执行器未配置。")
+            _write(run)
+        return
+    command, cwd, environment, suite_name = registered
     started = time.monotonic()
     try:
-        environment = os.environ.copy()
-        backend_path = str(PROJECT_ROOT / "backend")
-        current_pythonpath = environment.get("PYTHONPATH", "")
-        environment["PYTHONPATH"] = os.pathsep.join(filter(None, [backend_path, current_pythonpath]))
         completed = subprocess.run(
-            command, cwd=str(PROJECT_ROOT), env=environment,
+            command, cwd=str(cwd), env=environment,
             capture_output=True, text=True, timeout=120,
         )
         output = (completed.stdout + "\n" + completed.stderr).strip()[-3000:]
         status = "passed" if completed.returncode == 0 else "failed"
         error_type = None if status == "passed" else "pytest_error"
-        message = "注册的 pytest 合同测试通过" if status == "passed" else "pytest 执行失败或依赖未准备"
+        message = f"注册的 {suite_name} 测试通过" if status == "passed" else f"{suite_name} 执行失败或依赖未准备"
     except (OSError, subprocess.TimeoutExpired) as exc:
         output = str(exc)
         status, error_type, message = "error", "runner_error", "pytest runner 无法完成"
@@ -244,7 +296,7 @@ def _execute_registered_pytest(run: dict[str, Any]) -> None:
         run["finished_at"] = now_iso()
         record_case(run["target"], run["tool"], status)
         record_run(run["target"], run["tool"], run["status"], time.monotonic() - started)
-        _event(run, run["status"], "pytest 注册执行结束。")
+        _event(run, run["status"], f"{suite_name} 注册执行结束。")
         _write(run)
 
 

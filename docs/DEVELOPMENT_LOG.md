@@ -69,3 +69,26 @@ GitHub 重命名只改变远端名称。初次交接时文档尚未提交；用�
 - 作者：Codex（GPT-5）。第一次从页面启动“本地注册执行”时发现真实 `pytest_error`：runner 子进程继承了工作目录，但没有补充 `backend` 源码路径，导致页面执行与终端直接执行的环境不一致。
 - 修复 runner 的受控子进程环境拼装，保留原有 `PYTHONPATH` 并追加固定的 `backend` 目录；不开放前端传入任意环境变量、脚本路径或命令。
 - 重启一次后端加载修复（前端未关闭），再次从页面完成“预览→确认→执行”，`U-T01` 显示“注册的 pytest 合同测试通过”，运行结果为 1/1 通过、约 275 ms。该次修复前的失败运行仍作为历史记录和候选 BadCase 保留，便于追溯。
+
+## 2026-09-15：Asteria 主测试对象与注册适配（Codex / GPT-5）
+
+### 已做
+
+- 按用户最新范围把 Asteria Research Agent 设为 TestLab 默认目标；T2I 仅保留为兼容目标，文生图生成和 T2I LLM 裁判不计入本轮科研 Agent 测试。
+- 新增 Asteria 场景目录：Coordinator 请求合同、Judge/Monitor 合同、异步意图路由、只读 API、Agent 行为回归、只读性能和 Worker 恢复；目录仍以 Mock 为默认，不产生模型费用。
+- 在 Asteria 仓库新增 `tests/test_testlab_contract.py`，覆盖路由注册、研究请求凭据边界、严格质量评分/Monitor 冷启动及异步意图合同；不启动研究任务、不触碰 PostgreSQL。
+- 在 TestLab 新增固定 `Requests` 冒烟 `backend/tests/test_asteria_api_smoke.py`，只读取 Asteria `/openapi.json` 与 `/.well-known/agent-discovery.json`；本地 runner 通过固定目标/工具映射执行，不接受浏览器命令、脚本或 URL。
+- 新增无密钥 Asteria Postman Collection、只读 JMeter JMX、Asteria Jenkins 合同分支、Windows 环境变量说明和 Docker Desktop 的 `host.docker.internal:8018` 默认连通配置。
+
+### 验证与边界
+
+- Asteria 合同测试在当前 dora Python 环境中 `4 passed`；TestLab 工作台合同 `5 passed`，Requests 测试文件在服务重载前发现旧 API 尚未暴露 Evaluation Monitor，已记录为待重载验证，不将旧服务结果写成通过。
+- 运行中的 Asteria API 的 `/openapi.json` 已确认 Coordinator/Run 路由存在；本轮新增 Evaluation 路由需要重载 8018 后再执行真实只读冒烟。重载是使已提交代码生效的必要操作，前端 3023 与 worker 不需关闭。
+- Docker daemon 当前未启动，因此只验证 Compose 配置和资产结构，不虚报镜像构建成功。Asteria API smoke 不需要文生图、VLM 或 LLM Judge 密钥。
+- 旧 T2I 控制面 Collection 与合同测试保留；TestLab 的 Asteria Mock 通过率不等于科研效果，E-A01 live/rescore 仍需认证测试用户和独立评测环境。
+
+### 目标口径补充：以 Asteria 学习测开工具（Codex / GPT-5）
+
+- 本轮主线是 Asteria 的测试对象、测试指令和工具使用：pytest/Requests 负责可重复的代码与接口断言，Postman/Newman 负责请求编排与 CI 重放，JMeter 负责隔离只读控制面的性能练习，Jenkins 负责固定参数回归和结果归档。
+- Charles/Fiddler、Tapd/Jira、Linux/SQL/Docker 作为抓包、缺陷流转、环境与数据辅助知识记录，不新增未实现的外部连接器；不为学习工具而改动 Asteria 主编排。
+- 文生图生成、VLM/LLM Judge 和付费研究任务不纳入本轮 Asteria 测试前置条件；E-A01/F-A01 仍只登记为后续真实 Coordinator/历史 Trace 场景，不能把 Mock 或只读冒烟当成端到端质量结果。

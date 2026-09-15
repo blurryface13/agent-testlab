@@ -888,7 +888,7 @@ function TestWorkbenchPage({ initialTab, onTabChange, onBack }: { initialTab: Te
   const [catalog, setCatalog] = useState<TestCatalog | null>(null);
   const [runs, setRuns] = useState<TestRun[]>([]);
   const [badcaseRows, setBadcaseRows] = useState<TestBadCase[]>([]);
-  const [target, setTarget] = useState("t2i-safety");
+  const [target, setTarget] = useState("asteria-agent");
   const [level, setLevel] = useState("all");
   const [tool, setTool] = useState("pytest");
   const [mode, setMode] = useState<"mock" | "local">("mock");
@@ -959,14 +959,15 @@ function TestWorkbenchPage({ initialTab, onTabChange, onBack }: { initialTab: Te
     finally { setPending(false); }
   };
   const toggle = (id: string) => setSelected((previous) => previous.includes(id) ? previous.filter((item) => item !== id) : [...previous, id]);
-  const targetName = catalog?.targets.find((item) => item.id === target)?.name || target;
+  const targetProfile = catalog?.targets.find((item) => item.id === target);
+  const targetName = targetProfile?.name || target;
 
   if (loading) return <main className="loading">正在读取测试目录…</main>;
   return <>
     <section className="composer-heading testing-heading">
       <button className="back-button" onClick={onBack}><Icon name="back" />返回实验概览</button>
-      <p className="eyebrow">AGENT TESTLAB / CONTROLLED RUNNER</p><h1>自动化测试工作台</h1>
-      <p className="heading-note">测试对象、执行工具与结果记录统一管理，预览不会调用模型。</p>
+      <p className="eyebrow">AGENT TESTLAB / ASTERIA PRIMARY</p><h1>自动化测试工作台</h1>
+      <p className="heading-note">当前主测试对象是 Asteria Research Agent；测试对象、工具与结果记录统一管理，预览不会调用模型。</p>
     </section>
     <div className="testing-tabs" role="tablist">
       {([["workbench", "测试工作台"], ["runs", "运行记录"], ["badcases", "BadCase"], ["tools", "工具说明"]] as Array<[TestingTab, string]>).map(([id, label]) => <button key={id} className={initialTab === id ? "testing-tab active" : "testing-tab"} onClick={() => onTabChange(id)}>{label}<span>{id === "runs" ? runs.length : id === "badcases" ? badcaseRows.length : ""}</span></button>)}
@@ -983,7 +984,7 @@ function TestWorkbenchPage({ initialTab, onTabChange, onBack }: { initialTab: Te
         <div className="panel testing-case-panel">
           <div className="panel-heading"><div><p className="eyebrow">REGISTERED CASES</p><h2>{targetName} · {visibleCases.length} 个场景</h2></div><span className="testing-count">已选 {selected.length}</span></div>
           {visibleCases.length ? <div className="testing-case-list">{visibleCases.map((item) => <button key={item.id} className={selected.includes(item.id) ? "testing-case selected" : "testing-case"} onClick={() => toggle(item.id)}><span className="case-check">{selected.includes(item.id) ? "✓" : ""}</span><span className="case-copy"><strong>{item.id} · {item.name}</strong><small>{item.scope} · {item.description}</small><em>{item.assertions.slice(0, 2).join(" · ")}</em></span><span className="case-level">{item.level}</span></button>)}</div> : <p className="panel-description">当前筛选下没有兼容用例，请更换测试工具或对象。</p>}
-          <div className="testing-actionbar"><div><b>{selected.length} 个用例</b><span>{mode === "mock" ? "不调用模型，结果写入本地 TestLab 目录" : "本地注册执行，仅运行允许的测试入口"}</span></div><button className="secondary" onClick={() => void doPreview()} disabled={!selected.length || pending}>{pending ? "处理中…" : "预览执行"}</button></div>
+          <div className="testing-actionbar"><div><b>{selected.length} 个用例</b><span>{targetProfile?.description || ""} · {mode === "mock" ? "不调用模型，结果写入本地 TestLab 目录" : "本地注册执行，仅运行允许的测试入口"}</span></div><button className="secondary" onClick={() => void doPreview()} disabled={!selected.length || pending}>{pending ? "处理中…" : "预览执行"}</button></div>
         </div>
         <aside className="panel testing-inspector"><p className="eyebrow">INSPECTOR</p><h2>执行检查</h2>{preview?.selection ? <div className="testing-preview"><span className="preview-status">预览已通过</span><dl><div><dt>对象</dt><dd>{targetName}</dd></div><div><dt>工具</dt><dd>{catalog?.tools.find((item) => item.id === tool)?.name}</dd></div><div><dt>预计耗时</dt><dd>{preview.selection.estimated_seconds}s</dd></div><div><dt>费用</dt><dd>{preview.selection.cost_mode}</dd></div></dl><button className="primary full-button" onClick={() => void doStart()} disabled={pending}>确认开始测试</button></div> : <><p className="panel-description">选择测试场景后先生成执行预览。预览会检查工具兼容性、运行模式和费用边界。</p><div className="inspector-rule"><span>当前目标</span><b>{targetName}</b></div><div className="inspector-rule"><span>当前工具</span><b>{catalog?.tools.find((item) => item.id === tool)?.name}</b></div><div className="inspector-rule"><span>执行约束</span><b>注册用例 · 固定目录</b></div></>}</aside>
       </section>
