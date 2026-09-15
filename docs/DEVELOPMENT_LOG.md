@@ -93,6 +93,12 @@ GitHub 重命名只改变远端名称。初次交接时文档尚未提交；用�
 - Charles/Fiddler、Tapd/Jira、Linux/SQL/Docker 作为抓包、缺陷流转、环境与数据辅助知识记录，不新增未实现的外部连接器；不为学习工具而改动 Asteria 主编排。
 - 文生图生成、VLM/LLM Judge 和付费研究任务不纳入本轮 Asteria 测试前置条件；E-A01/F-A01 仍只登记为后续真实 Coordinator/历史 Trace 场景，不能把 Mock 或只读冒烟当成端到端质量结果。
 
+### 2026-09-15：磁盘清理与 CI/CD 主线确认（Codex / GPT-5）
+
+- 对本机磁盘进行只读盘点后，仅清理 Python、Node、Homebrew 和 Conda 的包缓存，释放约 1.3GB；保留仓库、模型、论文、虚拟环境、Docker 数据和 Codex 运行时，未停止现有项目服务。
+- 根据求职测开目标重新确认技术栈优先级：pytest/Requests 负责代码与接口测试，Postman/Newman 负责接口编排与重放，JMeter 负责性能练习，Jenkins 负责固定回归、门禁和 JUnit/Allure 归档。
+- Jenkins 不再作为可有可无的“计划中”工具：当前仓库已有无密钥 Jenkinsfile，下一步在 Windows + Docker Desktop 上单独部署 Jenkins LTS，先完成 Asteria 合同测试 Pipeline，再把 JMeter 性能任务作为显式触发阶段；纯 Java 的 jAgent 可作为后续压测目标，不与 Asteria 只读控制面混淆。
+
 ### 2026-09-15：补充抓包工具说明（Codex / GPT-5）
 
 - 工具目录新增 Charles、Fiddler 两个手动辅助项，定位为本地 HTTP 调试和时序观察，不加入可执行工具下拉，不接受网页远程控制、任意代理地址或生产流量。

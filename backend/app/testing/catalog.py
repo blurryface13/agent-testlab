@@ -78,9 +78,10 @@ TOOLS = [
         "id": "jenkins",
         "name": "Jenkins",
         "kind": "ci",
-        "status": "planned",
-        "description": "提交后冒烟、定时回归与报告归档",
-        "guide": ["选择已登记的 Job", "使用固定参数触发构建", "归档 JUnit/Allure 与脱敏日志"],
+        "status": "workflow",
+        "executable": False,
+        "description": "CI 主线：固定回归、参数化执行、门禁与报告归档",
+        "guide": ["在 Jenkins LTS 中创建 Pipeline Job", "使用白名单参数触发 Asteria 合同测试", "归档 JUnit/Allure 与脱敏日志，并保留构建趋势"],
         "asset": "jenkins",
     },
     {

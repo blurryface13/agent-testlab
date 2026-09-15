@@ -6,7 +6,7 @@
 
 将现有个人 T2I Safety 控制台演进为以 Asteria Research Agent 为主测试对象的自动化测试工作台。传统测试负责接口、状态、权限、异常和性能；Agent 评测负责意图、执行行为和交付质量。两者共用用例目录、批次记录、报告入口和 BadCase 流程，不混用通过率分母。T2I 只作为兼容目标保留，不作为本轮科研 Agent 测试的替代物。
 
-本轮交付自动化测试工作台首版、工具适配资产、Docker 部署包、两组 Agent 测试指令和 Asteria 评测合同。不发起真实模型调用、不安装 Jenkins、不运行真实压测、不修改科研主编排、不复制公司代码或私有数据。
+本轮交付自动化测试工作台首版、工具适配资产、Docker 部署包、两组 Agent 测试指令和 Asteria 评测合同。Jenkins 是后续必须落地的 CI/CD 主线，但本地控制台首版不隐式安装或启动 Jenkins；不发起真实模型调用、不运行真实压测、不修改科研主编排、不复制公司代码或私有数据。
 
 角色边界：
 
@@ -85,7 +85,7 @@ Runner 只接受注册的执行器、case_id 和受控参数；不接受前端�
 
 ## 5. 环境与上线
 
-先在 Mac 使用 Mock 模型及独立测试数据跑通；个人 PC 可用 Docker Compose 承载 TestLab、JSON 事实源、Redis 和受控 runner。PostgreSQL/Jenkins 作为后续多人或 CI 部署适配，不随首版控制面默认启动。无需公网域名或 GPU。
+先在 Mac 使用 Mock 模型及独立测试数据跑通；个人 PC 可用 Docker Compose 承载 TestLab、JSON 事实源、Redis 和受控 runner。PostgreSQL 作为后续多人部署适配；Jenkinsfile 已提供，Jenkins LTS 的本地连接、首个 Pipeline Job 与构建归档属于 P4 必做项，但不随首版控制面默认启动。无需公网域名或 GPU。
 
 数据库、文件卷和测试用户与日常使用隔离。T2I 当前依赖相邻 demo 的环境及产物，第一笔实施必须取消测试对其真实目录的默认写入，不复制密钥。真实模型网络默认禁止，仅 explicit live 配置允许。
 
@@ -101,7 +101,7 @@ JMeter 从独立机器发压；控制面接口压测使用模型替身，低并�
 | P1 基础自动化 | pytest＋Requests、T2I 合同测试接入、Postman 资产 | 已完成首版：Mock 业务链、预览 hash、运行事件、取消、BadCase 和无密钥 Collection |
 | P2 科研评测 | EchoMind adapter、Monitor、两组用例、历史补评 | 已完成接入合同：Asteria 提供严格 Judge 解析和 Monitor 观测 API；TestLab 已登记 Asteria 合同与只读 API runner；真实 Coordinator run/score 仍需配置环境后执行 |
 | P3 控制台 | 按 DESIGN.md 接入类型/工具/内容选择与结果详情 | 已完成首版：测试工作台、运行记录、BadCase、工具说明和响应式布局 |
-| P4 CI 与性能 | Jenkins 冒烟/定时回归、Newman、JMeter | 已提供：Jenkinsfile、Postman Collection、JMeter JMX；外部服务连接和真实压测待部署环境验证 |
+| P4 CI 与性能 | Jenkins 冒烟/定时回归、Newman、JMeter | Jenkinsfile、Postman Collection、JMeter JMX 已提供；下一步必须在部署机完成 Jenkins Job、JUnit 归档和隔离性能验证 |
 
 每阶段记录代码 revision、环境、命令、退出状态、产物与已知边界。无实测不填写简历提升比例；先两组不宣称五组。5% 为基线退化规则，0.75 为质量阈值，均不是已达效果。
 

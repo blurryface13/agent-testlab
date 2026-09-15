@@ -56,7 +56,7 @@
 | F-01 | 稳定性/依赖 | 模型超时、工具异常、网络中断 | 重试有上限；状态真实；恢复不重复计费或副作用 | 故障替身，不切断共享网络 |
 | E2E-01/02 | Agent 语义 | 见 Agent 评测计划 | 任务结果＋行为约束＋四维 Judge | 单独 live 或历史补评 |
 
-Catalog 中的场景族是可选择的；Mock runner 已覆盖目录校验、预检 hash、批次执行、故障注入、事件和 BadCase。Asteria 本地 runner 只执行 Asteria checkout 中的 `tests/test_testlab_contract.py`，Requests runner 只执行 TestLab 中的只读 API 冒烟。`backend/tests/test_t2i_company_contract.py` 仍是兼容目标的业务合同测试，不计入 Asteria 结果。JMeter、Newman、Jenkins 资产已提供，但未宣称外部工具在当前主机已经连接。
+Catalog 中的场景族是可选择的；Mock runner 已覆盖目录校验、预检 hash、批次执行、故障注入、事件和 BadCase。Asteria 本地 runner 只执行 Asteria checkout 中的 `tests/test_testlab_contract.py`，Requests runner 只执行 TestLab 中的只读 API 冒烟。`backend/tests/test_t2i_company_contract.py` 仍是兼容目标的业务合同测试，不计入 Asteria 结果。JMeter、Newman、Jenkins 资产已提供；Jenkins 属于必须完成的 CI/CD 主线，但在配置 Job、节点和凭据前，不宣称外部工具已连接。
 
 ## 3. 工具使用教学设计
 
@@ -72,12 +72,12 @@ Catalog 中的场景族是可选择的；Mock runner 已覆盖目录校验、预
 - pytest：显示为什么是单元或集成测试、前置数据、收集到的测试名称、断言位置、复现命令。用户在网页选 case，不填写任意 Python。
 - Postman：下载 Collection 与空凭据 environment → 本地填 base_url/token → 查看请求和 Tests → Send/Runner → 导入结果。第一版不承诺网页遥控 Postman 桌面应用。
 - JMeter：下载已审查的 JMX → 解释线程数、ramp-up、duration、思考时间、成功断言 → CLI 发压 → 查看 JTL 与 HTML。主按钮默认预览，不自动压生产。
-- Jenkins：查看参数、阶段、凭据引用和构建 URL；外部 Jenkins 不可用时清楚显示“未连接”，仍允许本地 pytest。
+- Jenkins：按 Jenkinsfile 创建 Pipeline，练习参数、阶段、凭据引用、JUnit 归档和构建 URL；外部 Jenkins 不可用时清楚显示“未连接”，仍允许本地 pytest。
 - Allure：是人读报告；JUnit XML 是 CI 结果交换格式，两者可同时生成。解析结果时保留 fail/error/skip，不只展示绿色总分。
 
 ## 4. Jenkins 执行合同
 
-计划参数：TARGET_PROFILE、SUITE_ID、REVISION、MODEL_MODE(mock/live)、允许的 CONCURRENCY 与 BUDGET。凭据使用 Jenkins Credentials 引用，日志脱敏；无浏览器传入 token 或 shell 文本。
+计划参数：TARGET_PROFILE、SUITE_ID、REVISION、MODEL_MODE(mock/live)、允许的 CONCURRENCY 与 BUDGET。凭据使用 Jenkins Credentials 引用，日志脱敏；无浏览器传入 token 或 shell 文本。首个 CI 目标是固定 Asteria 合同回归，不把 JMeter 压测或真实模型调用塞进每次提交门禁。
 
 流水线：固定代码版本 → 隔离依赖/环境检查 → 单元与合同测试 → Mock 接口/集成 → always 归档 → 清理本次测试资源。主流程失败仍归档，但构建保持失败。
 

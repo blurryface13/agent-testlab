@@ -103,4 +103,4 @@ Asteria 的 API 若运行在另一台内网机器，只填固定的 `ASTERIA_BAS
 
 ## 7. 当前明确边界
 
-本配置已经提供可用的完整控制面、Asteria 目标目录、Mock 执行、注册 pytest/Requests 执行、运行事件、取消、BadCase、Redis 镜像和 Prometheus 指标；Jenkins、Postman/Newman 和 JMeter 以注册资产/导出适配为边界，未在容器启动时伪造外部工具已经连接。真实科研 Agent 的 Monitor/Judge 仍通过 Asteria 的受控评测接口接入，不把 TestLab 的 Mock 分数当作科研效果。
+本配置已经提供可用的完整控制面、Asteria 目标目录、Mock 执行、注册 pytest/Requests 执行、运行事件、取消、BadCase、Redis 镜像和 Prometheus 指标；Postman/Newman、JMeter 以注册资产/导出适配为边界，Jenkins 以独立 CI/CD 主线部署，均不会在控制台容器启动时伪造外部工具已经连接。真实科研 Agent 的 Monitor/Judge 仍通过 Asteria 的受控评测接口接入，不把 TestLab 的 Mock 分数当作科研效果。
