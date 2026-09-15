@@ -63,7 +63,7 @@ TOOLS = [
         "status": "export",
         "description": "接口调试、Collection 导出与 CI 执行",
         "guide": ["下载登记的 Collection", "在 Postman 配置被测环境", "用 Newman 导出机器可读结果"],
-        "asset": "postman",
+        "asset": "asteria-postman",
     },
     {
         "id": "jmeter",
@@ -72,7 +72,7 @@ TOOLS = [
         "status": "export",
         "description": "控制面接口的阶梯负载与持续压测",
         "guide": ["先对隔离环境运行小流量", "逐级增加并发并观察错误率", "查看 P95/P99、吞吐量和资源曲线"],
-        "asset": "jmeter",
+        "asset": "asteria-jmeter",
     },
     {
         "id": "jenkins",
@@ -223,6 +223,7 @@ CASES = [
         "precondition": "本地服务已启动",
         "assertions": ["HTTP 200", "不返回 API Key", "provider 状态可读"],
         "description": "只读检查服务、通道和敏感配置展示。",
+        "tool_assets": {"postman": "postman"},
     },
     {
         "id": "A-T02",
@@ -234,6 +235,7 @@ CASES = [
         "precondition": "Mock 模式与注册用例",
         "assertions": ["返回预览摘要", "不启动模型", "不写入业务产物"],
         "description": "确认用户明确开始前，预览只做配置和权限校验。",
+        "tool_assets": {"postman": "postman"},
     },
     {
         "id": "I-T01",
@@ -289,6 +291,7 @@ CASES = [
         "precondition": "Mock provider，独立测试数据",
         "assertions": ["吞吐量可记录", "P95/P99 可记录", "错误按接口分类"],
         "description": "不调用真实模型，验证控制面接口在阶梯负载下的行为。",
+        "tool_assets": {"jmeter": "jmeter"},
     },
     {
         "id": "F-R01",
